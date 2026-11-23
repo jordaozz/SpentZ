@@ -1,0 +1,9 @@
+*.exe
+*.sqlite3
+*.sqlite3-*
+*.pdb
+*.csv
+/work/
+/outputs/
+SpentZ Backup */
+.spentz-backup-*/

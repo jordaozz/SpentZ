@@ -1,0 +1,918 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SpentZ" Width="1120" Height="760" MinWidth="780" MinHeight="590"
+        WindowStartupLocation="CenterScreen" Background="{DynamicResource Canvas}" FontFamily="Segoe UI"
+        FontSize="14" Foreground="{DynamicResource Ink}" UseLayoutRounding="True">
+  <Window.Resources>
+    <Style TargetType="TextBlock">
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <DataTemplate x:Key="ReservePlaceLine">
+      <DockPanel Margin="0,0,0,4">
+        <TextBlock DockPanel.Dock="Right" Text="{Binding AmountDisplay}" FontWeight="SemiBold" Margin="12,0,0,0"/>
+        <TextBlock Text="{Binding Place}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/>
+      </DockPanel>
+    </DataTemplate>
+    <DataTemplate x:Key="ReserveMoveLine">
+      <DockPanel Margin="0,2,0,3">
+        <TextBlock DockPanel.Dock="Right" Text="{Binding AmountDisplay}" FontWeight="SemiBold" Margin="12,0,0,0"/>
+        <TextBlock Text="{Binding SummaryLabel}" Foreground="{DynamicResource Muted}"/>
+      </DockPanel>
+    </DataTemplate>
+    <Style x:Key="VisibleFocus" TargetType="Control">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Control">
+            <Border BorderBrush="{DynamicResource FocusOutline}" BorderThickness="2" CornerRadius="9" Margin="-3"
+                    SnapsToDevicePixels="True"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="{DynamicResource Surface}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource Ink}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource InputOutline}"/>
+    </Style>
+    <Style TargetType="Label">
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    </Style>
+    <Style TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    </Style>
+    <Style TargetType="ToolTip">
+      <Setter Property="Background" Value="{DynamicResource Surface}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource InputOutline}"/>
+    </Style>
+    <Style x:Key="ScrollPage" TargetType="RepeatButton">
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="12"/>
+      <Setter Property="Background" Value="{DynamicResource Canvas}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Border Background="{TemplateBinding Background}">
+              <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton x:Name="Decrease" Style="{StaticResource ScrollPage}" Command="{x:Static ScrollBar.PageUpCommand}"/>
+                </Track.DecreaseRepeatButton>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton x:Name="Increase" Style="{StaticResource ScrollPage}" Command="{x:Static ScrollBar.PageDownCommand}"/>
+                </Track.IncreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb>
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="Grip" Background="{DynamicResource InputOutline}" CornerRadius="4" Margin="2"/>
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Grip" Property="Background" Value="{DynamicResource Muted}"/>
+                          </Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+              </Track>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="Orientation" Value="Horizontal">
+                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                <Setter TargetName="Decrease" Property="Command" Value="{x:Static ScrollBar.PageLeftCommand}"/>
+                <Setter TargetName="Increase" Property="Command" Value="{x:Static ScrollBar.PageRightCommand}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="Orientation" Value="Horizontal">
+          <Setter Property="Width" Value="Auto"/>
+          <Setter Property="Height" Value="12"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style TargetType="ComboBoxItem">
+      <Setter Property="Background" Value="{DynamicResource Surface}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="Padding" Value="9,5"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBoxItem">
+            <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+              <ContentPresenter/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsHighlighted" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSoft}"/></Trigger>
+        <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSelection}"/></Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="Padding" Value="9,5"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBox">
+            <Grid>
+              <ToggleButton x:Name="Picker" Focusable="False" ClickMode="Press"
+                            IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource InputOutline}" BorderThickness="1" CornerRadius="6">
+                      <TextBlock Text="▾" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,9,0" Foreground="{DynamicResource Muted}"/>
+                    </Border>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                Margin="9,0,26,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+              <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                     Focusable="False" AllowsTransparency="True">
+                <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource InputOutline}" BorderThickness="1"
+                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                  <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}" CanContentScroll="True">
+                    <ItemsPresenter/>
+                  </ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Picker" Property="Opacity" Value=".55"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource Surface}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Outline}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="14"/>
+      <Setter Property="Padding" Value="20"/>
+    </Style>
+    <Style TargetType="Button">
+      <Setter Property="FocusVisualStyle" Value="{StaticResource VisibleFocus}"/>
+      <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AccentText}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="14,9"/>
+      <Setter Property="MinHeight" Value="36"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value=".82"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value=".64"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value=".45"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Nav" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource NavText}"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Padding" Value="15,8"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="Margin" Value="0,0,0,3"/>
+    </Style>
+    <Style x:Key="Example" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="9,5"/>
+      <Setter Property="MinHeight" Value="26"/>
+      <Setter Property="Margin" Value="0,0,6,4"/>
+    </Style>
+    <Style x:Key="GuideTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+      <Setter Property="FontSize" Value="17"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
+    </Style>
+    <Style x:Key="GuideBody" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+      <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
+      <Setter Property="LineHeight" Value="21"/>
+    </Style>
+    <Style TargetType="DataGridColumnHeader">
+      <Setter Property="Padding" Value="9,8"/>
+      <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style TargetType="DataGridCell">
+      <Setter Property="Padding" Value="8,0"/>
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="DataGridCell">
+            <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" ClipToBounds="True">
+              <ContentPresenter VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Background" Value="{DynamicResource AccentSelection}"/>
+          <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+  </Window.Resources>
+  <Grid Background="{DynamicResource Canvas}">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Border Padding="17,24,17,16" Background="{DynamicResource Sidebar}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="4,0,0,34">
+          <Image x:Name="BrandIcon" Width="44" Height="44" HorizontalAlignment="Left"
+                 RenderOptions.BitmapScalingMode="HighQuality"/>
+          <TextBlock Text="SpentZ" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,13,0,0"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="5,0,0,4">
+          <Ellipse Width="7" Height="7" Fill="{DynamicResource NavDot}" Margin="0,0,7,0"/>
+          <TextBlock Text="Dados neste computador" Foreground="{DynamicResource NavText}" FontSize="12"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,12">
+          <Button x:Name="SettingsNav" Content="Configurações" Style="{StaticResource Nav}" Margin="0,0,0,5"/>
+          <Button x:Name="ThemeToggle" Content="Modo noturno" Style="{StaticResource Nav}" Margin="0"
+                  ToolTip="Alternar entre modo claro e noturno"/>
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <Button x:Name="ChatNav" Content="Chat" Style="{StaticResource Nav}"/>
+          <Button x:Name="SummaryNav" Content="Resumo mensal" Style="{StaticResource Nav}"/>
+          <Button x:Name="IncomeNav" Content="Ganhos" Style="{StaticResource Nav}"/>
+          <Button x:Name="ReservesNav" Content="Cofrinho" Style="{StaticResource Nav}"/>
+          <Button x:Name="BillsNav" Content="Contas futuras" Style="{StaticResource Nav}"/>
+          <Button x:Name="HistoryNav" Content="Lançamentos" Style="{StaticResource Nav}"/>
+        </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+    <Grid Grid.Column="1" Margin="28,24,28,22">
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <DockPanel Margin="0,0,0,20">
+        <StackPanel x:Name="MonthBar" DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center">
+          <Border CornerRadius="11" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Outline}" BorderThickness="1" Padding="4">
+            <StackPanel Orientation="Horizontal">
+              <Button x:Name="PrevMonth" Content="‹" FontSize="20" Padding="12,3" AutomationProperties.Name="Mês anterior"/>
+              <Button x:Name="MonthPicker" MinWidth="130" Margin="6,0" Padding="4,4"
+                      ToolTip="Escolher mês e ano (Ctrl+G)" AutomationProperties.Name="Escolher mês e ano"/>
+              <Button x:Name="NextMonth" Content="›" FontSize="20" Padding="12,3" AutomationProperties.Name="Próximo mês"/>
+            </StackPanel>
+          </Border>
+          <Button x:Name="ReturnCurrentMonth" Content="Voltar ao mês atual" Style="{StaticResource Example}"
+                  Margin="0,6,0,0" HorizontalAlignment="Center" Visibility="Collapsed"/>
+        </StackPanel>
+        <StackPanel>
+          <Button x:Name="NavigateBack" Content="‹  Voltar" Style="{StaticResource Example}" Margin="0,0,0,6"
+                  HorizontalAlignment="Left" Visibility="Collapsed" ToolTip="Voltar à seção (Alt + seta para a esquerda)"/>
+          <TextBlock x:Name="PageTitle" FontSize="30" FontWeight="Bold" Focusable="True" KeyboardNavigation.IsTabStop="False"/>
+          <TextBlock x:Name="PageDescription" Foreground="{DynamicResource Muted}" Margin="0,5,0,0"/>
+        </StackPanel>
+      </DockPanel>
+      <Button x:Name="ReminderOpen" Grid.Row="1" Visibility="Collapsed" Margin="0,0,0,12" Padding="12,7"
+              HorizontalContentAlignment="Left" AutomationProperties.LiveSetting="Polite"/>
+      <Border x:Name="ChatPage" Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <ScrollViewer x:Name="ChatScroll" VerticalScrollBarVisibility="Auto" Padding="22,20">
+            <StackPanel x:Name="Messages"/>
+          </ScrollViewer>
+          <Border Grid.Row="1" BorderBrush="{DynamicResource Outline}" BorderThickness="0,1,0,0" Padding="16,12">
+            <StackPanel>
+              <DockPanel>
+                <Button x:Name="Send" Content="Registrar" DockPanel.Dock="Right" Background="{DynamicResource Accent}" Foreground="White" Margin="10,0,0,0"/>
+                <TextBox x:Name="ChatInput" BorderBrush="{DynamicResource InputOutline}" BorderThickness="1" Padding="10,7"
+                         VerticalContentAlignment="Center" MaxLength="240" AutomationProperties.Name="Mensagem com valor e descrição do lançamento"/>
+              </DockPanel>
+              <WrapPanel Margin="0,9,0,0">
+                <TextBlock Text="Exemplos" FontSize="12" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,9,4"/>
+                <Button x:Name="ExampleMeal" Content="42,90 almoço" Style="{StaticResource Example}" ToolTip="Preencher a mensagem"/>
+                <Button x:Name="ExampleRide" Content="15 Uber" Style="{StaticResource Example}" ToolTip="Preencher a mensagem"/>
+                <Button x:Name="ExampleIncome" Content="recebi 150 freela" Style="{StaticResource Example}" ToolTip="Preencher a mensagem"/>
+              </WrapPanel>
+              <WrapPanel Margin="0,4,0,0">
+                <TextBlock Text="Cadastro rápido" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="0,0,9,4"/>
+                <Button x:Name="QuickExpense" Content="Gasto" Style="{StaticResource Example}"/>
+                <Button x:Name="QuickIncome" Content="Ganho" Style="{StaticResource Example}"/>
+                <Button x:Name="QuickFixedExpense" Content="Gasto fixo" Style="{StaticResource Example}"/>
+                <Button x:Name="QuickFixedIncome" Content="Ganho fixo" Style="{StaticResource Example}"/>
+                <Button x:Name="QuickCofrinho" Content="Cofrinho" Style="{StaticResource Example}"/>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+      <ScrollViewer x:Name="SummaryPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <WrapPanel Margin="0,0,0,8">
+            <Button x:Name="OpenClosures" Content="Fechamento" Margin="0,0,8,4"/>
+            <Button x:Name="AdjustBalance" Content="Ajustar saldo" Margin="0,0,8,4"/>
+            <Button x:Name="OpenNextBills" Content="Contas do próximo mês" Margin="0,0,0,4"/>
+          </WrapPanel>
+          <Border Style="{StaticResource Card}" Padding="16,11" Margin="0,0,0,12">
+            <StackPanel>
+              <TextBlock x:Name="SummaryAvailable" Foreground="{DynamicResource Ink}" FontSize="22" FontWeight="Bold"
+                         ToolTip="Saldo conforme os lançamentos e as movimentações do Cofrinho."/>
+              <TextBlock x:Name="ForecastTitle" Foreground="{DynamicResource Muted}" Margin="0,8,0,0"/>
+              <TextBlock x:Name="ForecastBalance" FontSize="19" FontWeight="SemiBold" Margin="0,2,0,0"/>
+              <Expander x:Name="ForecastDetails" Header="Como a previsão foi calculada" Margin="0,10,0,0">
+                <StackPanel Margin="0,6,0,0">
+                  <TextBlock x:Name="SummaryOpening" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,4" Visibility="Collapsed"/>
+                  <TextBlock x:Name="SummaryCommitments" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"/>
+                </StackPanel>
+              </Expander>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Padding="16,12" Margin="0,0,0,12">
+            <StackPanel>
+              <WrapPanel Margin="0,0,0,4">
+                <TextBlock Text="Limites do mês" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,12,4"/>
+                <Button x:Name="CreateCategory" Content="Criar categoria" Margin="0,0,6,4"/>
+                <Button x:Name="BudgetSettings" Content="Definir limite" Margin="0,0,0,4"/>
+              </WrapPanel>
+              <ScrollViewer MaxHeight="145" VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="CategoryLimits"/>
+              </ScrollViewer>
+              <TextBlock x:Name="BudgetStatus" Foreground="{DynamicResource AccentText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Padding="16,11" Margin="0,0,0,16">
+            <Expander Header="Detalhes do mês">
+            <StackPanel Margin="0,8,0,0">
+            <TextBlock x:Name="SummaryExpensesSinceOpening" FontWeight="SemiBold" Margin="0,0,0,8" Visibility="Collapsed"/>
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Text="Entradas do mês" Foreground="{DynamicResource Muted}" FontSize="12"/>
+                <TextBlock x:Name="SummaryIncome" Foreground="{DynamicResource IncomeInk}" FontSize="18" FontWeight="Bold" Margin="0,2,0,0"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                <TextBlock Text="Resultado do mês" Foreground="{DynamicResource Muted}" FontSize="12" ToolTip="Ganhos menos despesas registradas no mês"/>
+                <TextBlock x:Name="SummaryBalance" FontSize="18" FontWeight="Bold" Margin="0,2,0,0"/>
+              </StackPanel>
+              <StackPanel Grid.Column="2" Margin="12,0,0,0">
+                <TextBlock Text="Despesas do mês completo" Foreground="{DynamicResource Muted}" FontSize="12"/>
+                <TextBlock x:Name="Total" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource ExpenseInk}" Margin="0,2,0,0"/>
+              </StackPanel>
+            </Grid>
+            <TextBlock x:Name="Comparison" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,8,0,0"/>
+            <TextBlock x:Name="Count" Foreground="{DynamicResource Muted}" FontSize="12"/>
+            <TextBlock x:Name="Average" Foreground="{DynamicResource Muted}" FontSize="12"/>
+            </StackPanel>
+            </Expander>
+          </Border>
+          <Border Style="{StaticResource Card}" Padding="16,12" Margin="0,0,0,16">
+            <StackPanel>
+              <DockPanel Margin="0,0,0,8">
+                <Button x:Name="SummaryCofrinho" DockPanel.Dock="Right" Content="Cofrinho" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                <StackPanel>
+                  <TextBlock Text="Dinheiro guardado até este mês" Foreground="{DynamicResource Muted}" FontSize="12"/>
+                  <TextBlock x:Name="SummaryReserve" FontSize="19" FontWeight="Bold" Margin="0,2,0,0"/>
+                </StackPanel>
+              </DockPanel>
+              <ItemsControl x:Name="SummaryReservePlaces" ItemTemplate="{StaticResource ReservePlaceLine}"/>
+              <TextBlock x:Name="SummaryReserveActivity" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,4,0,0"/>
+              <Expander x:Name="SummaryReserveDetails" Header="Movimentações de reserva do mês" Margin="0,6,0,0"
+                        Foreground="{DynamicResource AccentText}" Visibility="Collapsed">
+                <ItemsControl x:Name="SummaryReserveMoves" ItemTemplate="{StaticResource ReserveMoveLine}" Margin="18,5,0,0"/>
+              </Expander>
+            </StackPanel>
+          </Border>
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="1.25*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Style="{StaticResource Card}" Margin="0,0,12,0">
+              <StackPanel>
+                <TextBlock Text="Gastos por dia" FontSize="20" FontWeight="Bold"/>
+                <TextBlock x:Name="ChartHint" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,3,0,14"/>
+                <StackPanel x:Name="Trend"/>
+                <Border x:Name="PeakCard" Background="{DynamicResource AccentSoft}" CornerRadius="9" Margin="0,16,0,0" Padding="11,8">
+                  <StackPanel>
+                    <TextBlock Text="Dia de maior gasto" Foreground="{DynamicResource AccentText}" FontSize="12"/>
+                    <TextBlock x:Name="Peak" FontWeight="SemiBold" Margin="0,2,0,0"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Text="Por categoria" FontSize="20" FontWeight="Bold"/>
+                <TextBlock Text="Participação no total do mês" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,3,0,14"/>
+                <StackPanel x:Name="Categories"/>
+              </StackPanel>
+            </Border>
+          </Grid>
+        </StackPanel>
+      </ScrollViewer>
+      <Grid x:Name="ClosuresPage" Grid.Row="2" Visibility="Collapsed">
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.25*"/></Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Card}" Margin="0,0,12,0" Padding="12">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource GuideTitle}" Text="Meses salvos" Margin="4,0,0,10"/>
+              <TextBlock x:Name="ClosureEmpty" DockPanel.Dock="Top" Style="{StaticResource GuideBody}" Margin="4,0,0,10"
+                         Text="Os meses com lançamentos aparecem aqui. Abra Fechamento pelo Resumo para ver a prévia do mês atual."/>
+              <DataGrid x:Name="ClosureGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+                        CanUserResizeRows="False" SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column"
+                        GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Outline}" RowHeight="39"
+                        BorderBrush="{DynamicResource Outline}" Background="{DynamicResource Surface}" AlternatingRowBackground="{DynamicResource Alternate}">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Mês" Binding="{Binding MonthDisplay}" SortMemberPath="Month" Width="*" MinWidth="100"/>
+                  <DataGridTextColumn Header="Saldo" Binding="{Binding BalanceDisplay}" SortMemberPath="Balance" Width="95"/>
+                </DataGrid.Columns>
+              </DataGrid>
+            </DockPanel>
+          </Border>
+          <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+            <Border x:Name="ClosureChart" Style="{StaticResource Card}" VerticalAlignment="Top">
+              <StackPanel>
+                <WrapPanel Margin="0,0,0,5">
+                  <TextBlock x:Name="ClosureMonth" Style="{StaticResource GuideTitle}" VerticalAlignment="Center" Margin="0,0,12,4"/>
+                  <Button x:Name="ClosureBills" Content="Contas a pagar" Margin="0,0,0,4"/>
+                </WrapPanel>
+                <TextBlock x:Name="ClosureKind" Foreground="{DynamicResource Muted}" Margin="0,0,0,8"/>
+                <TextBlock x:Name="ClosureCount" Foreground="{DynamicResource Muted}" Margin="0,0,0,15"/>
+                <TextBlock Text="Entradas" Foreground="{DynamicResource IncomeInk}" FontWeight="SemiBold"/>
+                <TextBlock x:Name="ClosureIncome" Margin="0,2,0,4"/>
+                <ProgressBar x:Name="ClosureIncomeBar" Maximum="1" Height="9" BorderThickness="0"
+                             Background="{DynamicResource AccentSoft}" Foreground="{DynamicResource IncomeInk}"/>
+                <TextBlock Text="Despesas" Foreground="{DynamicResource ExpenseInk}" FontWeight="SemiBold" Margin="0,14,0,0"/>
+                <TextBlock x:Name="ClosureExpenses" Margin="0,2,0,4"/>
+                <ProgressBar x:Name="ClosureExpensesBar" Maximum="1" Height="9" BorderThickness="0"
+                             Background="{DynamicResource AccentSoft}" Foreground="{DynamicResource ExpenseInk}"/>
+                <Border Background="{DynamicResource AccentSoft}" Padding="12,8" CornerRadius="8" Margin="0,16,0,12">
+                  <StackPanel>
+                    <TextBlock x:Name="ClosureBalanceLabel" Text="Saldo após despesas" Foreground="{DynamicResource Muted}" FontSize="12"/>
+                    <TextBlock x:Name="ClosureBalance" FontSize="20" FontWeight="Bold" Margin="0,2,0,0"/>
+                  </StackPanel>
+                </Border>
+                <TextBlock Text="Reservas até este mês" FontWeight="SemiBold" Margin="0,5,0,3"/>
+                <TextBlock x:Name="ClosureReserveTotal" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
+                <ItemsControl x:Name="ClosureReservePlaces" ItemTemplate="{StaticResource ReservePlaceLine}"/>
+                <TextBlock x:Name="ClosureReserveActivity" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,3,0,8"/>
+                <ItemsControl x:Name="ClosureReserveMoves" ItemTemplate="{StaticResource ReserveMoveLine}" Margin="0,0,0,8"/>
+                <DockPanel Margin="0,0,0,10">
+                  <TextBlock x:Name="ClosureAvailable" DockPanel.Dock="Right" FontWeight="Bold" Margin="10,0,0,0"/>
+                  <TextBlock Text="Disponível no mês após reservas" Foreground="{DynamicResource AccentText}"/>
+                </DockPanel>
+                <TextBlock x:Name="ClosurePending" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,12"/>
+                <TextBlock x:Name="ClosureOpening" Foreground="{DynamicResource Muted}" Margin="0,0,0,8"/>
+                <TextBlock x:Name="ClosureAdjustments" Foreground="{DynamicResource Muted}" Margin="0,0,0,8"/>
+                <Expander x:Name="ClosureTransactionDetails" Header="Lançamentos e pagamentos do mês" Margin="0,0,0,10">
+                  <ListBox x:Name="ClosureTransactions" MaxHeight="240" BorderThickness="0"
+                           Background="{DynamicResource Surface}" Foreground="{DynamicResource Ink}"
+                           ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,3,0,3"/></DataTemplate>
+                      </ListBox.ItemTemplate>
+                  </ListBox>
+                </Expander>
+                <Expander x:Name="ClosureLimitDetails" Header="Limites por categoria" Margin="0,0,0,10" Visibility="Collapsed">
+                  <ItemsControl x:Name="ClosureLimits">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,3,0,3"/></DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Expander>
+                <StackPanel x:Name="ClosureSubscriptionsSection" Visibility="Collapsed" Margin="0,0,0,10">
+                  <TextBlock Text="Assinaturas no mês" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                  <ItemsControl x:Name="ClosureSubscriptions">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding}" Foreground="{DynamicResource Muted}" Margin="0,0,0,5"/>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+                <WrapPanel>
+                  <Button x:Name="ClosureDetails" Content="Ver detalhes do mês" Margin="0,0,6,4"/>
+                  <Button x:Name="ClosureExport" Content="Exportar relatório do mês" Margin="0,0,0,4"/>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+          </ScrollViewer>
+        </Grid>
+      </Grid>
+      <Grid x:Name="ReservesPage" Grid.Row="2" Visibility="Collapsed">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Border Style="{StaticResource Card}" Padding="16,12" Margin="0,0,0,12">
+          <StackPanel>
+            <TextBlock Text="Total guardado até este mês" Foreground="{DynamicResource Muted}"/>
+            <TextBlock x:Name="ReserveTotal" FontSize="25" FontWeight="Bold" Margin="0,2,0,5"/>
+            <TextBlock x:Name="ReserveActivity" Foreground="{DynamicResource Muted}"/>
+            <WrapPanel Margin="0,9,0,0">
+              <Button x:Name="ReserveMove" Content="Depositar ou sacar" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,7,4"/>
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+        <Grid Grid.Row="1">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.8*"/></Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Card}" Padding="12" Margin="0,0,10,0">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource GuideTitle}" Text="Por local" Margin="0,0,0,8"/>
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                  <ItemsControl x:Name="ReservePlaces" ItemTemplate="{StaticResource ReservePlaceLine}"/>
+                  <TextBlock x:Name="ReserveEmpty" Foreground="{DynamicResource Muted}" Text="Nenhuma reserva neste período."/>
+                </StackPanel>
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+          <Border Grid.Column="1" Style="{StaticResource Card}" Padding="12">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource GuideTitle}" Text="Movimentações do mês" Margin="0,0,0,8"/>
+              <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <Button x:Name="ReserveEdit" Content="Editar" IsEnabled="False" Margin="0,0,6,4"/>
+                <Button x:Name="ReserveRemove" Content="Remover movimentação" Margin="0,0,0,4"/>
+              </WrapPanel>
+              <DataGrid x:Name="ReserveGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+                        SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column" RowHeight="34"
+                        Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Outline}" AlternatingRowBackground="{DynamicResource Alternate}"
+                        GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Outline}">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Data" Binding="{Binding DayDisplay}" SortMemberPath="Date" Width="58" MinWidth="58"/>
+                  <DataGridTextColumn Header="Local" Binding="{Binding Place}" Width="*" MinWidth="72">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock">
+                        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                        <Setter Property="ToolTip" Value="{Binding Place}"/>
+                      </Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                  <DataGridTextColumn Header="Tipo" Binding="{Binding Kind}" Width="82" MinWidth="82"/>
+                  <DataGridTextColumn Header="Valor" Binding="{Binding AmountDisplay}" SortMemberPath="Cents" Width="85" MinWidth="85">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding AmountDisplay}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                </DataGrid.Columns>
+              </DataGrid>
+            </DockPanel>
+          </Border>
+        </Grid>
+      </Grid>
+      <Grid x:Name="IncomePage" Grid.Row="2" Visibility="Collapsed">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid Margin="0,0,0,16">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="1.35*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Card}" Background="{DynamicResource Accent}" BorderBrush="{DynamicResource Accent}" Margin="0,0,12,0">
+            <StackPanel>
+              <TextBlock Text="Ganhos do mês" FontWeight="SemiBold" Foreground="{DynamicResource OnAccentMuted}"/>
+              <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,5,0,0">
+                <TextBlock x:Name="IncomeTotal" FontSize="29" FontWeight="Bold" Foreground="White" TextWrapping="NoWrap"/>
+              </Viewbox>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Style="{StaticResource Card}" Margin="0,0,12,0">
+            <StackPanel>
+              <TextBlock Text="Despesas do mês" Foreground="{DynamicResource Muted}"/>
+              <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,5,0,0">
+                <TextBlock x:Name="IncomeExpenses" FontSize="24" FontWeight="Bold" TextWrapping="NoWrap"/>
+              </Viewbox>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="2" Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="Saldo do mês" Foreground="{DynamicResource Muted}"/>
+              <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,5,0,0">
+                <TextBlock x:Name="IncomeBalance" FontSize="24" FontWeight="Bold" TextWrapping="NoWrap"/>
+              </Viewbox>
+            </StackPanel>
+          </Border>
+        </Grid>
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="14">
+          <DockPanel>
+            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+              <Button x:Name="IncomeAdd" Content="Adicionar ganho" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,8,0"/>
+              <Button x:Name="IncomeSchedules" Content="Ganhos fixos" Margin="0,0,8,0"/>
+              <Button x:Name="IncomeEdit" Content="Editar" Margin="0,0,8,0"/>
+              <Button x:Name="IncomeDelete" Content="Excluir" Background="{DynamicResource DangerSurface}" Foreground="{DynamicResource DangerText}"/>
+            </WrapPanel>
+            <TextBlock x:Name="IncomeStatus" DockPanel.Dock="Top" Foreground="{DynamicResource Muted}" FontSize="12" Margin="2,0,0,9"/>
+            <TextBlock x:Name="ExpectedIncome" DockPanel.Dock="Top" Foreground="{DynamicResource AccentText}" FontSize="12" Margin="2,0,0,9"
+                       Visibility="Collapsed"/>
+            <DataGrid x:Name="IncomeGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+                      CanUserResizeRows="False" SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Outline}" RowHeight="39"
+                      BorderBrush="{DynamicResource Outline}" Background="{DynamicResource Surface}" AlternatingRowBackground="{DynamicResource Alternate}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Data" Binding="{Binding DateDisplay}" SortMemberPath="Date" Width="105"/>
+                <DataGridTextColumn Header="Descrição" Binding="{Binding Description}" MinWidth="145" Width="2*"/>
+                <DataGridTextColumn Header="Categoria" Binding="{Binding Category}" MinWidth="124" Width="*"/>
+                <DataGridTextColumn Header="Valor" Binding="{Binding AmountDisplay}" SortMemberPath="Cents" Width="105"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </DockPanel>
+        </Border>
+      </Grid>
+      <Border x:Name="HistoryPage" Grid.Row="2" Visibility="Collapsed" Style="{StaticResource Card}" Padding="14">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,10,0">
+              <Label Content="Buscar descrição" Target="{Binding ElementName=HistorySearch}" Padding="0,0,0,5" Foreground="{DynamicResource Muted}"/>
+              <TextBox x:Name="HistorySearch" Padding="8,6" MaxLength="240" BorderBrush="{DynamicResource InputOutline}" MinHeight="32"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="0,0,10,0">
+              <Label Content="Tipo" Target="{Binding ElementName=HistoryType}" Padding="0,0,0,5" Foreground="{DynamicResource Muted}"/>
+              <ComboBox x:Name="HistoryType" MinWidth="92" MinHeight="32" Padding="6,4"/>
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <Label Content="Categoria" Target="{Binding ElementName=HistoryCategory}" Padding="0,0,0,5" Foreground="{DynamicResource Muted}"/>
+              <ComboBox x:Name="HistoryCategory" MinWidth="151" MinHeight="32" Padding="6,4"/>
+            </StackPanel>
+          </Grid>
+          <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <Button x:Name="ExpenseAdd" Content="Adicionar gasto" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,8,0"/>
+            <Button x:Name="Edit" Content="Editar" Margin="0,0,8,0"/>
+            <Button x:Name="HistoryRefund" Content="Registrar estorno" IsEnabled="False" Margin="0,0,8,0"/>
+            <Button x:Name="Delete" Content="Excluir" Background="{DynamicResource DangerSurface}" Foreground="{DynamicResource DangerText}" Margin="0,0,8,0"/>
+            <Button x:Name="Export" Content="Exportar mês" ToolTip="Salvar todos os lançamentos do mês em CSV"/>
+          </WrapPanel>
+          <TextBlock x:Name="HistoryStatus" DockPanel.Dock="Top" Foreground="{DynamicResource Muted}" FontSize="12" Margin="2,0,0,9"/>
+          <DataGrid x:Name="HistoryGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+                    CanUserResizeRows="False" SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column"
+                    GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Outline}" RowHeight="39"
+                    BorderBrush="{DynamicResource Outline}" Background="{DynamicResource Surface}" AlternatingRowBackground="{DynamicResource Alternate}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Data" Binding="{Binding DateDisplay}" SortMemberPath="Date" Width="105"/>
+              <DataGridTextColumn Header="Descrição" Binding="{Binding Description}" MinWidth="118" Width="2*">
+                <DataGridTextColumn.ElementStyle>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                    <Setter Property="ToolTip" Value="{Binding Description}"/>
+                  </Style>
+                </DataGridTextColumn.ElementStyle>
+              </DataGridTextColumn>
+              <DataGridTextColumn Header="Categoria" Binding="{Binding Category}" MinWidth="95" Width="*"/>
+              <DataGridTextColumn Header="Valor" Binding="{Binding SignedAmount}" SortMemberPath="Cents" Width="122">
+                <DataGridTextColumn.ElementStyle>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                    <Setter Property="Foreground" Value="{DynamicResource ExpenseInk}"/>
+                    <Setter Property="ToolTip" Value="{Binding TypeDisplay}"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsIncome}" Value="True">
+                        <Setter Property="Foreground" Value="{DynamicResource IncomeInk}"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </DataGridTextColumn.ElementStyle>
+              </DataGridTextColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </Border>
+      <Grid x:Name="BillsPage" Grid.Row="2" Visibility="Collapsed">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Border Style="{StaticResource Card}" Padding="16,12" Margin="0,0,0,12">
+          <DockPanel>
+            <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0">
+              <Button x:Name="BillHistory" Content="Histórico" Margin="0,0,6,0"/>
+              <Button x:Name="BillAdd" Content="Novo gasto fixo" Background="{DynamicResource Accent}" Foreground="White"/>
+            </WrapPanel>
+            <StackPanel>
+              <TextBlock x:Name="BillTotalLabel" Text="A pagar neste mês" Foreground="{DynamicResource Muted}" FontSize="12"/>
+              <TextBlock x:Name="BillTotal" FontSize="26" FontWeight="Bold" Margin="0,2,0,0"/>
+            </StackPanel>
+          </DockPanel>
+        </Border>
+        <Border x:Name="BillNextCard" Grid.Row="1" Style="{StaticResource Card}" Background="{DynamicResource AccentSoft}" Padding="14,9" Margin="0,0,0,12">
+          <DockPanel>
+            <Button x:Name="IncomeNextMonth" Content="Ver próximo mês ›" DockPanel.Dock="Right" Margin="10,0,0,0" VerticalAlignment="Center"/>
+            <StackPanel>
+              <TextBlock x:Name="BillNextTotal" FontWeight="SemiBold" Foreground="{DynamicResource AccentText}"/>
+              <TextBlock x:Name="BillNextFirst" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/>
+            </StackPanel>
+          </DockPanel>
+        </Border>
+        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="14">
+          <DockPanel>
+            <WrapPanel x:Name="BillRegularTabs" DockPanel.Dock="Top" Margin="0,0,0,10">
+              <Button x:Name="BillOverview" Content="Este mês" Margin="0,0,6,5"/>
+              <Button x:Name="BillNextMonth" Content="Próximo mês" Margin="0,0,6,5"/>
+              <Button x:Name="BillMonthView" Content="Por mês" Margin="0,0,6,5"/>
+              <Button x:Name="BillPendingView" Content="Vencidas" Margin="0,0,6,5"/>
+              <Button x:Name="BillPlansView" Content="Planos ativos" Style="{StaticResource Example}" Margin="4,0,6,5"/>
+            </WrapPanel>
+            <WrapPanel x:Name="BillHistoryTabs" DockPanel.Dock="Top" Margin="0,0,0,10" Visibility="Collapsed">
+              <Button x:Name="BillCanceledView" Content="Canceladas" Margin="0,0,6,5"/>
+              <Button x:Name="BillConfirmedView" Content="Pagamentos" Margin="0,0,6,5"/>
+            </WrapPanel>
+            <TextBlock x:Name="BillStatus" DockPanel.Dock="Top" Foreground="{DynamicResource Muted}" FontSize="12" Margin="2,0,0,9"/>
+            <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+              <Button x:Name="BillPay" Content="Marcar como paga" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,6,4"/>
+              <Button x:Name="BillUnlink" Content="Desvincular" Margin="0,0,6,4" Visibility="Collapsed"
+                      ToolTip="Voltar a previsão para pendente, mantendo o lançamento registrado"/>
+              <Button x:Name="BillEdit" Content="Editar" Margin="0,0,6,4" ToolTip="Editar plano"/>
+              <Button x:Name="BillSchedule" Content="Ver cronograma" Margin="0,0,6,4"/>
+              <Button x:Name="BillCancel" Content="Cancelar renovação" Margin="0,0,6,4"
+                      ToolTip="Retirar futuras cobranças de uma assinatura que você cancelou"/>
+              <Button x:Name="BillWaive" Content="Dispensar cobrança" Margin="0,0,6,4" Visibility="Collapsed"/>
+              <Button x:Name="BillRevise" Content="Alterar próximos vencimentos" Margin="0,0,6,4" Visibility="Collapsed"/>
+              <Button x:Name="BillArchive" Content="Arquivar" Margin="0,0,6,4" ToolTip="Arquivar todas as cobranças pendentes deste plano"/>
+            </WrapPanel>
+            <TextBlock x:Name="BillCancelStatus" DockPanel.Dock="Bottom" Visibility="Collapsed"
+                       Foreground="{DynamicResource Muted}" FontSize="12" Margin="2,8,0,0"/>
+            <DataGrid x:Name="BillGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+                      CanUserResizeRows="False" SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Outline}" RowHeight="39"
+                      BorderBrush="{DynamicResource Outline}" Background="{DynamicResource Surface}" AlternatingRowBackground="{DynamicResource Alternate}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Vencimento" Binding="{Binding DueDisplay}" SortMemberPath="ShownDate" Width="102" MinWidth="102"/>
+                <DataGridTextColumn Header="Descrição" Binding="{Binding Description}" MinWidth="104" Width="*">
+                  <DataGridTextColumn.ElementStyle>
+                    <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding Description}"/></Style>
+                  </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Ciclo" Binding="{Binding Series}" MinWidth="115" Width="115"/>
+                <DataGridTextColumn Header="Valor" Binding="{Binding AmountDisplay}" SortMemberPath="Cents" Width="97" MinWidth="97">
+                  <DataGridTextColumn.ElementStyle>
+                    <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding AmountDisplay}"/></Style>
+                  </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Situação" Binding="{Binding Status}" Width="101" MinWidth="101"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </DockPanel>
+        </Border>
+      </Grid>
+      <ScrollViewer x:Name="SettingsPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+            <StackPanel>
+              <TextBlock Text="Aparência" Style="{StaticResource GuideTitle}" Margin="0,0,0,12"/>
+              <CheckBox x:Name="SettingsDark" Content="Usar modo noturno" Margin="0,0,0,14"/>
+              <TextBlock Text="Cor de destaque" FontWeight="SemiBold" Margin="0,0,0,8"/>
+              <WrapPanel x:Name="PaletteChoices"/>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+            <StackPanel>
+              <TextBlock Text="Avisos de vencimento" Style="{StaticResource GuideTitle}"/>
+              <TextBlock Text="Escolha com quantos dias de antecedência as contas aparecem no aviso. As contas atrasadas também aparecem." Style="{StaticResource GuideBody}" Margin="0,0,0,12"/>
+              <Label Content="Antecedência" Target="{Binding ElementName=ReminderDays}" Padding="0,0,0,4"/>
+              <ComboBox x:Name="ReminderDays" MinHeight="34" Width="170" HorizontalAlignment="Left"/>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="Dados e ajuda" Style="{StaticResource GuideTitle}" Margin="0,0,0,10"/>
+              <WrapPanel>
+                <Button x:Name="SettingsBackup" Content="Backup e restauração" Margin="0,0,8,4"/>
+                <Button x:Name="SettingsHelp" Content="Como usar" Margin="0,0,8,4"/>
+                <Button x:Name="SettingsOpeningBalance" Content="Saldo inicial" Margin="0,0,0,4"/>
+              </WrapPanel>
+              <TextBlock x:Name="AppVersion" Foreground="{DynamicResource Muted}" FontSize="12" Margin="0,9,0,0"/>
+            </StackPanel>
+          </Border>
+          <Button x:Name="ResetRecords" Content="Resetar" HorizontalAlignment="Right" Margin="0,20,0,4"
+                  Padding="12,6" FontSize="12" Background="{DynamicResource ResetSurface}" Foreground="White"
+                  AutomationProperties.HelpText="Abre uma confirmação para apagar todos os registros do SpentZ."/>
+        </StackPanel>
+      </ScrollViewer>
+      <ScrollViewer x:Name="BackupPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <Border Style="{StaticResource Card}" Margin="0,0,0,12" Padding="16">
+            <StackPanel>
+              <TextBlock Style="{StaticResource GuideTitle}" Text="Antes de formatar ou trocar de computador"/>
+              <TextBlock Style="{StaticResource GuideBody}" Margin="0,2,0,5">
+                <Run FontWeight="Bold">1.</Run> Clique em <Run FontWeight="SemiBold">Salvar backup</Run> e escolha onde criar a pasta.
+              </TextBlock>
+              <TextBlock Style="{StaticResource GuideBody}" Margin="0,0,0,5">
+                <Run FontWeight="Bold">2.</Run> O SpentZ cria uma pasta com o aplicativo e uma cópia dos seus dados.
+                Copie a <Run FontWeight="SemiBold">pasta inteira</Run> para um pendrive, HD externo ou nuvem. Você também pode salvá-la diretamente lá.
+              </TextBlock>
+              <TextBlock Style="{StaticResource GuideBody}">
+                <Run FontWeight="Bold">3.</Run> Confira se a pasta abre no destino antes de formatar. Se usar a nuvem, espere a sincronização terminar.
+              </TextBlock>
+              <Button x:Name="BackupSave" Content="Salvar backup" HorizontalAlignment="Left" Margin="0,12,0,0" Background="{DynamicResource Accent}" Foreground="White"/>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Padding="16">
+            <StackPanel>
+              <TextBlock Style="{StaticResource GuideTitle}" Text="Para recuperar seus dados"/>
+              <TextBlock Style="{StaticResource GuideBody}" Margin="0,2,0,5">
+                <Run FontWeight="Bold">1.</Run> Copie a pasta de backup do pendrive ou da nuvem de volta para o computador. Abra o <Run FontWeight="SemiBold">SpentZ.exe</Run> que está dentro dela.
+              </TextBlock>
+              <TextBlock Style="{StaticResource GuideBody}" Margin="0,0,0,5">
+                <Run FontWeight="Bold">2.</Run> Vá em <Run FontWeight="SemiBold">Configurações → Backup e restauração</Run> e clique em <Run FontWeight="SemiBold">Restaurar backup</Run>.
+              </TextBlock>
+              <TextBlock Style="{StaticResource GuideBody}">
+                <Run FontWeight="Bold">3.</Run> Confira a pasta sugerida ou use <Run FontWeight="SemiBold">Procurar pasta</Run>, se ela foi movida ou renomeada.
+                Ao confirmar, o backup substitui os dados atuais do SpentZ.
+              </TextBlock>
+              <Button x:Name="BackupRestore" Content="Restaurar backup" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+            </StackPanel>
+          </Border>
+          <WrapPanel Margin="2,12,0,0">
+            <TextBlock x:Name="LastBackupInfo" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,10,4"/>
+            <Button x:Name="OpenLastBackup" Content="Abrir pasta do último backup" Margin="0,0,0,4" Style="{StaticResource Example}"/>
+          </WrapPanel>
+          <TextBlock x:Name="BackupStatus" Foreground="{DynamicResource AccentText}" Margin="2,12,2,0" Visibility="Collapsed"
+                     AutomationProperties.LiveSetting="Polite"/>
+        </StackPanel>
+      </ScrollViewer>
+      <ScrollViewer x:Name="HelpPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <Border Style="{StaticResource Card}" BorderBrush="{DynamicResource Accent}" Background="{DynamicResource Hero}" Margin="0,0,0,14">
+            <StackPanel>
+              <TextBlock Text="Registre seu primeiro gasto" FontSize="21" FontWeight="Bold" Foreground="White"/>
+              <TextBlock Foreground="{DynamicResource OnAccentMuted}" Margin="0,6,0,12" LineHeight="21">
+                No chat, digite <Run FontWeight="Bold">42,90 almoço</Run> e clique em <Run FontWeight="Bold">Registrar</Run>.
+                O aplicativo salva R$ 42,90 em Alimentação. Use vírgula para os centavos.
+              </TextBlock>
+              <Button x:Name="HelpOpenChat" Content="Abrir o chat" Background="{DynamicResource AccentSoft}" HorizontalAlignment="Left"/>
+            </StackPanel>
+          </Border>
+          <UniformGrid Columns="2" Margin="-6,0,-6,0">
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Registrar um ganho"/>
+                <TextBlock Style="{StaticResource GuideBody}">
+                  Digite <Run FontWeight="SemiBold">recebi 150 freela</Run> no chat. Para escolher a data ou a categoria,
+                  abra <Run FontWeight="SemiBold">Ganhos</Run> e clique em <Run FontWeight="SemiBold">Adicionar ganho</Run>.
+                </TextBlock>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Entender o saldo do mês"/>
+                <TextBlock Style="{StaticResource GuideBody}">
+                  Abra <Run FontWeight="SemiBold">Resumo mensal</Run> para ver o total que entrou e saiu. Use as setas ou clique no nome do mês para escolher outro período.
+                </TextBlock>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Corrigir ou remover um gasto"/>
+                <TextBlock Style="{StaticResource GuideBody}">
+                  Se a compra não aconteceu, clique em <Run FontWeight="SemiBold">Desfazer</Run> no chat e confirme.
+                  Para um lançamento antigo, selecione a linha em <Run FontWeight="SemiBold">Lançamentos</Run> e clique em Editar ou Excluir.
+                </TextBlock>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Salvar os gastos do mês"/>
+                <TextBlock Style="{StaticResource GuideBody}">
+                  Em <Run FontWeight="SemiBold">Lançamentos</Run>, escolha o mês e clique em <Run FontWeight="SemiBold">Exportar mês</Run>.
+                  Escolha onde salvar o arquivo CSV. Você pode abri-lo em um programa de planilhas.
+                </TextBlock>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Planejar contas futuras"/>
+                <TextBlock Style="{StaticResource GuideBody}" Text="No chat, clique em Gasto fixo e escolha conta mensal, assinatura, compra parcelada ou conta avulsa. Em Contas futuras, consulte os vencimentos. Marcar como paga registra a despesa pela data do pagamento ou vincula um lançamento existente."/>
+                <TextBlock Style="{StaticResource GuideBody}" Text="Depois de cancelar com o serviço, use Cancelar renovação. As próximas renovações saem da agenda. As cobranças anteriores em aberto continuam visíveis até você pagar ou dispensar."/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Guardar dinheiro no Cofrinho"/>
+                <TextBlock Style="{StaticResource GuideBody}" Text="Abra o Cofrinho e escolha Depositar ou Sacar. Informe o local, o valor e a data. O saque volta ao saldo disponível do mês. Acompanhe os saldos por local na aba Cofrinho e as movimentações no Resumo mensal e no fechamento."/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Criar categorias e limites"/>
+                <TextBlock Style="{StaticResource GuideBody}" Text="No Resumo mensal, clique em Criar categoria para adicionar um nome novo, como Cigarro. Depois use Definir limite e escolha uma categoria da lista. Envie 20 cigarro no Chat para classificar o gasto automaticamente."/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Corrigir saldo e registrar devoluções"/>
+                <TextBlock Style="{StaticResource GuideBody}" Text="Use Ajustar saldo no Resumo quando souber o saldo correto, mas desconhecer a origem da diferença. Para um erro ao informar o saldo de partida, abra Configurações e use Corrigir saldo inicial. Se uma compra foi devolvida, selecione-a em Lançamentos e use Registrar estorno."/>
+              </StackPanel>
+            </Border>
+          </UniformGrid>
+          <Border Background="{DynamicResource AccentSoft}" CornerRadius="11" Padding="15,10">
+            <TextBlock Foreground="{DynamicResource AccentText}" FontSize="13">
+              <Run FontWeight="SemiBold">Seus dados ficam neste computador.</Run> Você pode usar o app sem internet.
+            </TextBlock>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Grid>
+</Window>
