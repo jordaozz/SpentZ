@@ -28,7 +28,7 @@ namespace SpentZ
         internal DateTime? StopBefore { get; set; }
         internal DateTime? CanceledOn { get; set; }
         internal DateTime? CreatedOn { get; set; }
-        internal bool HasPayments { get; set; }
+        internal bool HasSettledOccurrences { get; set; }
         internal BillKind Kind { get; set; }
         internal bool IsMonthlyBill { get; set; }
         internal bool WasRevised { get; set; }
@@ -173,7 +173,7 @@ namespace SpentZ
             return rows.OrderBy(row => row.Due).ThenBy(row => row.Description).ToList();
         }
 
-        internal List<BillOccurrence> Pending(DateTime today, int days, bool income = false)
+        internal List<BillOccurrence> Pending(DateTime today, int days, bool income = false, int limit = int.MaxValue)
         {
             DateTime through = today.AddDays(days);
             List<BillOccurrence> rows = new List<BillOccurrence>();
@@ -182,15 +182,19 @@ namespace SpentZ
                 int count = plan.CountThrough(through);
                 HashSet<DateTime> paid = new HashSet<DateTime>(payments[plan.Id].Select(item => item.Due));
                 paid.UnionWith(waivers[plan.Id]);
-                for (int index = 0; index < count; index++)
+                int found = 0;
+                for (int index = 0; index < count && found < limit; index++)
                 {
                     int offset = index * plan.Interval;
                     DateTime due = plan.FirstDue.AddMonths(offset);
                     if (!paid.Contains(due))
+                    {
                         rows.Add(new BillOccurrence { Plan = plan, Offset = offset, Today = today });
+                        found++;
+                    }
                 }
             }
-            return rows.OrderBy(row => row.Due).ThenBy(row => row.Description).ToList();
+            return rows.OrderBy(row => row.Due).ThenBy(row => row.Description).Take(limit).ToList();
         }
 
         internal int PendingThrough(DateTime date, bool income = false)
@@ -224,6 +228,13 @@ namespace SpentZ
             return null;
         }
 
+        internal DateTime? NextEditableRenewal(BillPlan plan, DateTime today)
+        {
+            DateTime lastSettled = payments[plan.Id].Select(item => item.Due).Concat(waivers[plan.Id])
+                .DefaultIfEmpty(DateTime.MinValue).Max();
+            return NextRenewal(plan, lastSettled >= today ? lastSettled.AddDays(1) : today);
+        }
+
         internal List<BillOccurrence> Schedule(BillPlan plan, DateTime today)
         {
             if (plan.Archived)
@@ -255,7 +266,8 @@ namespace SpentZ
                 int index = plan.CountThrough(today.AddDays(-1));
                 int last = Math.Max(0, plan.MonthOffset(new DateTime(9998, 12, 1)) / plan.Interval);
                 if (plan.Installments > 0) last = Math.Min(last, plan.RemainingTerms - 1);
-                int offset = Math.Min(index, last) * plan.Interval;
+                DateTime? next = NextRenewal(plan, today);
+                int offset = next.HasValue ? plan.MonthOffset(next.Value) : Math.Min(index, last) * plan.Interval;
                 DateTime due = plan.FirstDue.AddMonths(offset);
                 BillPayment payment = payments[plan.Id].FirstOrDefault(item => item.Due == due);
                 return new BillOccurrence { Plan = plan, Offset = offset, Today = today, Payment = payment, PlanRecord = true };
@@ -377,7 +389,7 @@ namespace SpentZ
         private const string SelectPlans = @"SELECT id, description, category, cents, first_due, installments, first_installment, archived, stop_before,
             is_income, plan_kind, created_on, canceled_on, monthly_bill, was_revised, EXISTS(SELECT 1 FROM bill_payments WHERE plan_id = bill_plans.id)
             OR EXISTS(SELECT 1 FROM income_receipts WHERE plan_id = bill_plans.id)
-            OR EXISTS(SELECT 1 FROM bill_waivers WHERE plan_id = bill_plans.id AND settled_on <> '') FROM bill_plans";
+            OR EXISTS(SELECT 1 FROM bill_waivers WHERE plan_id = bill_plans.id) FROM bill_plans";
 
         private static BillPlan ReadPlan(Statement query)
         {
@@ -389,7 +401,7 @@ namespace SpentZ
                 StopBefore = ReadOptionalDate(query.Text(8)),
                 IsIncome = query.Integer(9) != 0, Kind = (BillKind)query.Integer(10),
                 CreatedOn = ReadOptionalDate(query.Text(11)), CanceledOn = ReadOptionalDate(query.Text(12)),
-                IsMonthlyBill = query.Integer(13) != 0, WasRevised = query.Integer(14) != 0, HasPayments = query.Integer(15) != 0
+                IsMonthlyBill = query.Integer(13) != 0, WasRevised = query.Integer(14) != 0, HasSettledOccurrences = query.Integer(15) != 0
             };
         }
 
@@ -442,10 +454,12 @@ namespace SpentZ
             }
             Execute(@"UPDATE bill_plans SET description = ?, category = ?, cents = ?, first_due = ?, installments = ?, first_installment = ?, plan_kind = ?, monthly_bill = ?
                 WHERE id = ? AND is_income = ? AND archived = 0 AND
-                ((first_due = ? AND installments = ? AND first_installment = ? AND plan_kind = ?) OR
-                (stop_before = '' AND NOT EXISTS (SELECT 1 FROM " + recorded + " WHERE plan_id = bill_plans.id)))",
+                ((first_due = ? AND installments = ? AND first_installment = ? AND plan_kind = ? AND monthly_bill = ? AND cents = ?) OR
+                (stop_before = '' AND NOT EXISTS (SELECT 1 FROM " + recorded + @" WHERE plan_id = bill_plans.id)
+                    AND NOT EXISTS (SELECT 1 FROM bill_waivers WHERE plan_id = bill_plans.id)))",
                 plan.Description, plan.Category, plan.Cents, due, (long)plan.Installments, (long)plan.FirstInstallment,
-                (long)plan.Kind, monthlyBill, plan.Id, income, due, (long)plan.Installments, (long)plan.FirstInstallment, (long)plan.Kind);
+                (long)plan.Kind, monthlyBill, plan.Id, income, due, (long)plan.Installments, (long)plan.FirstInstallment,
+                (long)plan.Kind, monthlyBill, plan.Cents);
             if (sqlite3_changes(database) == 0)
                 throw new IOException("Este plano mudou. Selecione a cobrança novamente para editar.");
         }
@@ -487,7 +501,7 @@ namespace SpentZ
             if (sqlite3_changes(database) == 0) throw new IOException("A cobrança mudou. Atualize a lista antes de dispensá-la.");
         }
 
-        internal void RevisePlan(BillPlan plan, DateTime cutoff, DateTime nextDate, long cents, DateTime today)
+        internal void RevisePlan(BillPlan plan, DateTime cutoff, BillPlan next, DateTime today)
         {
             Execute("BEGIN IMMEDIATE");
             try
@@ -495,11 +509,14 @@ namespace SpentZ
                 string cut = IsoDate(cutoff);
                 int offset = plan.MonthOffset(cutoff);
                 int installment = plan.Installments == 0 ? 1 : plan.FirstInstallment + offset / plan.Interval;
-                if (!plan.Includes(offset) || plan.FirstDue.AddMonths(offset) != cutoff || nextDate < today ||
-                    plan.MonthOffset(nextDate) < offset || cents <= 0 ||
-                    (plan.Installments > 0 && nextDate.Year * 12 + nextDate.Month +
+                bool canChangeCycle = plan.IsSubscription && plan.Installments == 0 &&
+                    (next.Kind == BillKind.Monthly || next.Kind == BillKind.Annual);
+                if (!plan.Includes(offset) || plan.FirstDue.AddMonths(offset) != cutoff || next.FirstDue < today ||
+                    (offset > 0 && next.FirstDue <= plan.FirstDue.AddMonths(offset - plan.Interval)) || next.Cents <= 0 ||
+                    (next.Kind != plan.Kind && !canChangeCycle) ||
+                    (plan.Installments > 0 && next.FirstDue.Year * 12 + next.FirstDue.Month +
                         (plan.Installments - installment) * plan.Interval > 9998 * 12 + 12))
-                    throw new IOException("Confira a nova data e o valor do plano.");
+                    throw new IOException("Use uma data a partir de hoje, depois das cobranças anteriores, e um valor positivo.");
                 Execute(@"UPDATE bill_plans SET stop_before = ?, was_revised = 1 WHERE id = ? AND archived = 0
                     AND stop_before = '' AND first_due = ? AND plan_kind = ? AND installments = ?
                     AND first_installment = ? AND cents = ? AND description = ? AND category = ? AND monthly_bill = ?
@@ -510,11 +527,12 @@ namespace SpentZ
                     (long)plan.FirstInstallment, plan.Cents, plan.Description, plan.Category, plan.IsMonthlyBill ? 1L : 0L, cut, cut, cut);
                 if (sqlite3_changes(database) == 0)
                     throw new IOException("O plano mudou ou já tem pagamentos futuros registrados.");
-                SavePlan(new BillPlan {
-                    Description = plan.Description, Category = plan.Category, Cents = cents, FirstDue = nextDate,
-                    Installments = plan.Installments, FirstInstallment = installment, IsIncome = plan.IsIncome,
-                    IsMonthlyBill = plan.IsMonthlyBill, Kind = plan.Kind, CreatedOn = today
-                });
+                next.Installments = plan.Installments;
+                next.FirstInstallment = installment;
+                next.IsIncome = plan.IsIncome;
+                next.IsMonthlyBill = plan.IsMonthlyBill;
+                next.CreatedOn = today;
+                SavePlan(next);
                 Execute("COMMIT");
             }
             catch
@@ -542,6 +560,14 @@ namespace SpentZ
             return Read("SELECT id, date, description, category, cents, entry_kind, version, " + (income ? "1" : "0") + " FROM " + entries +
                 " WHERE date >= ? AND date < ? AND entry_kind = 0 AND NOT EXISTS (SELECT 1 FROM " + links + " WHERE " + key + " = " + entries + ".id)" +
                 " ORDER BY date DESC, id DESC", IsoDate(start), IsoDate(start.AddMonths(1)));
+        }
+
+        internal bool CanLinkExpense(long id)
+        {
+            using (Statement candidate = Prepare(@"SELECT 1 FROM expenses WHERE id = ? AND entry_kind = 0
+                AND NOT EXISTS (SELECT 1 FROM bill_payments WHERE expense_id = expenses.id)
+                AND NOT EXISTS (SELECT 1 FROM goal_purchases WHERE expense_id = expenses.id)", new object[] { id }))
+                return candidate.Step() == Row;
         }
 
         internal bool UnlinkBill(BillOccurrence bill)

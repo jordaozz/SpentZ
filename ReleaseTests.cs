@@ -8,6 +8,283 @@ namespace SpentZ
 {
     internal sealed partial class Program
     {
+        private static void VerifyChatLanguage(string folder)
+        {
+            DateTime today = new DateTime(2026, 11, 25);
+            using (var store = new LedgerStore(Path.Combine(folder, Guid.NewGuid().ToString("N") + ".sqlite3")))
+            {
+                var program = new Program(store, () => today);
+                ShowTestWindow(program);
+                program.ChatText = "ganhei 150 de um free lance";
+                program.RefreshChatHighlight();
+                Require(program.Get<TextBlock>("ChatIntentPreview").Text == "Ganho", "O chat antecipa o tipo do ganho");
+                program.RegisterMessage();
+                Require(store.Month(today, true).Single().Category == "Trabalho extra", "Ganho com free lance usa a categoria correta");
+                program.ChatText = "paguei 150 reais em uma peça da moto";
+                program.RefreshChatHighlight();
+                var input = program.Get<RichTextBox>("ChatInput");
+                var format = new System.Windows.Documents.TextRange(ChatPosition(input.Document.ContentStart, 0),
+                    ChatPosition(input.Document.ContentStart, 6));
+                Require(program.Get<TextBlock>("ChatIntentPreview").Text == "Despesa" &&
+                    ((System.Windows.Media.SolidColorBrush)format.GetPropertyValue(System.Windows.Documents.TextElement.ForegroundProperty)).Color ==
+                    program.Tone("ExpenseInk").Color, "O verbo da despesa é destacado dentro do campo enquanto se digita");
+                program.Render(folder, "Chat", 1120, 720, "Chat-intencao");
+                program.RegisterMessage();
+                Require(store.Month(today).Single().Description == "peça da moto" && store.Month(today).Single().Cents == 15000,
+                    "Reais e os conectores são interpretados sem virar parte da descrição");
+                Require(LedgerEntry.FromMessage("Hoje, eu recebi 150 de um bico", today).IsIncome &&
+                    LedgerEntry.FromMessage("vou pagar o conserto 150", today) == null &&
+                    LedgerEntry.FromMessage("não paguei a peça 150", today) == null,
+                    "O chat reconhece variações de frase e ignora pagamentos planejados ou negados");
+                program.ChatText = "parcelei 1200 reais em 6x na moto";
+                program.RefreshChatHighlight();
+                Require(program.Get<TextBlock>("ChatIntentPreview").Text.StartsWith("Parcelamento"), "O chat identifica parcelas antes de salvar");
+                DriveDialog(program, "revisão das parcelas", program.RegisterMessage, dialog =>
+                {
+                    Require(Field<TextBox>(dialog, "Valor de cada cobrança (R$)").Text == "200,00" &&
+                        Field<TextBox>(dialog, "Total de parcelas").Text == "6", "O cartão de revisão recebe seis parcelas de 200 reais");
+                    Field<ComboBox>(dialog, "Já pagou a cobrança dessa data?").SelectedIndex = 0;
+                    Press(dialog, "Salvar");
+                });
+                Require(store.Month(today).Count == 1 && store.Bills().Month(today, today).Single().Plan.Installments == 6,
+                    "Parcelamento não lança o valor inteiro como despesa paga");
+                program.window.Close();
+            }
+        }
+
+        private static void VerifyChatSubscriptions(string folder)
+        {
+            DateTime today = new DateTime(2026, 11, 25);
+            using (var store = new LedgerStore(Path.Combine(folder, Guid.NewGuid().ToString("N") + ".sqlite3")))
+            {
+                var program = new Program(store, () => today);
+                ShowTestWindow(program);
+                program.ChatText = "fiz uma assinatura do Discord Nitro ontem por 25 reais";
+                program.RefreshChatHighlight();
+                Require(program.Get<TextBlock>("ChatIntentPreview").Text.StartsWith("Assinatura"),
+                    "O Chat identifica assinatura dentro da frase");
+                program.Render(folder, "Chat", 1120, 720, "Chat-assinatura");
+                DriveDialog(program, "cadastro de assinatura pelo Chat", program.RegisterMessage, dialog =>
+                {
+                    Require(Field<TextBox>(dialog, "Descrição").Text == "Discord Nitro" &&
+                        Field<ComboBox>(dialog, "Frequência e tipo de cobrança").SelectedIndex == 1 &&
+                        Field<TextBox>(dialog, "Valor de cada cobrança (R$)").Text == "25,00" &&
+                        Field<TextBox>(dialog, "Primeiro vencimento (dia/mês/ano)").Text == "24/11/2026",
+                        "A assinatura de ontem usa o serviço, valor e data informados");
+                    Require(Fields<TextBlock>(dialog).Any(item => item.Text.Contains("24/12/2026")),
+                        "O formulário exibe a próxima data automaticamente");
+                    Field<ComboBox>(dialog, "Já pagou a cobrança dessa data?").SelectedIndex = 1;
+                    Press(dialog, "Salvar");
+                });
+                Require(store.Month(today).Count == 1, "O primeiro pagamento de uma assinatura sai do saldo uma vez");
+                var next = store.Bills().Month(today.AddMonths(1), today).Single();
+                Require(next.Due.Day == 24 && next.Cents == 2500 && next.IsPending, "Renovação mensal aparece na agenda");
+                Press(program.window, "Ver em Contas futuras");
+                Require(program.agendaMode == AgendaMode.Plans && program.SelectedBill.Plan.Id == next.Plan.Id,
+                    "O atalho do Chat encontra a assinatura cadastrada");
+                DriveDialog(program, "BillEdit", dialog =>
+                {
+                    Field<TextBox>(dialog, "Próxima data (dia/mês/ano)").Text = "28/12/2026";
+                    Field<TextBox>(dialog, "Novo valor (R$)").Text = "29,90";
+                    Press(dialog, "Salvar alteração");
+                });
+                Require(store.Month(today).Single().Cents == 2500 && store.Bills().Month(today.AddMonths(1), today).Single().Cents == 2990 &&
+                    store.Bills().Month(today.AddMonths(2), today).Single().Due.Day == 28,
+                    "Editar a assinatura muda data e valor futuros e preserva o pagamento original");
+                LedgerEntry previous = LedgerEntry.FromMessage("40 assinatura da Netflix", today);
+                store.Save(previous);
+                program.RefreshMonth();
+                program.Navigate("History");
+                program.Get<DataGrid>("HistoryGrid").SelectedItem = program.Get<DataGrid>("HistoryGrid")
+                    .Items.Cast<LedgerEntry>().Single(item => item.Id == previous.Id);
+                Require(program.Get<Button>("HistorySubscription").Visibility == Visibility.Visible, "Despesa antiga oferece conversão");
+                DriveDialog(program, "HistorySubscription", dialog =>
+                {
+                    Field<ComboBox>(dialog, "Frequência e tipo de cobrança").SelectedIndex = 2;
+                    Press(dialog, "Salvar");
+                });
+                Require(store.Month(today).Count == 2 && store.Bills().Month(today.AddYears(1), today).Any(row =>
+                    row.Plan.Description == "Netflix" && row.Plan.Kind == BillKind.Annual), "Conversão vincula o registro e agenda a cobrança anual sem duplicar");
+                program.Navigate("Chat");
+                program.ChatText = "25 assinatura do Discord Nitro";
+                DriveDialog(program, "assinatura com valor primeiro", program.RegisterMessage, dialog =>
+                {
+                    Require(Field<TextBox>(dialog, "Descrição").Text == "Discord Nitro" &&
+                        Field<TextBox>(dialog, "Valor de cada cobrança (R$)").Text == "25,00", "Aceita o formato usado no Chat");
+                    dialog.Close();
+                });
+                Require(store.Month(today).Count == 2 && program.ChatText.Length > 0,
+                    "Cancelar mantém o rascunho e os registros existentes");
+                program.window.Close();
+            }
+        }
+
+        private static void VerifyAccountOverview(string folder)
+        {
+            DateTime today = new DateTime(2026, 11, 25);
+            using (var store = new LedgerStore(Path.Combine(folder, Guid.NewGuid().ToString("N") + ".sqlite3")))
+            {
+                store.SetOpeningBalance(today.AddDays(-2), 100000);
+                store.Save(LedgerEntry.FromMessage("100 mercado", today));
+                store.Save(LedgerEntry.FromMessage("recebi 50 freela", today));
+                store.Save(LedgerEntry.FromMessage("1000 compra futura", today.AddDays(1)));
+                store.AddReserveMovement("PicPay", today, 20000, false, null, true);
+                store.AddReserveMovement("Caixinha", today, 5000, false);
+                store.SavePlan(new BillPlan { Description = "Conta vencida", Cents = 30000, Category = "Moradia",
+                    FirstDue = today.AddMonths(-1), IsMonthlyBill = true, Installments = 1 });
+                store.SavePlan(new BillPlan { Description = "Assinatura", Cents = 20000, Category = "Lazer", FirstDue = today.AddDays(4) });
+                store.SavePlan(new BillPlan { Description = "Ganho previsto", Cents = 50000, Category = "Salário",
+                    FirstDue = today.AddDays(3), IsIncome = true });
+                var program = new Program(store, () => today);
+                ShowTestWindow(program);
+                program.Navigate("Summary", () => program.month = MonthStart(today.AddYears(-1)));
+                program.Get<Button>("OpenAccount").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Require(program.currentPage == "Account" && program.ParentPage() == "Summary", "Painel abre dentro do Resumo");
+                Require(program.Get<TextBlock>("AccountCash").Text == LedgerEntry.Money(90000) &&
+                    program.Get<TextBlock>("AccountAfter").Text == LedgerEntry.Money(40000) &&
+                    program.Get<TextBlock>("AccountCommitted").Text == LedgerEntry.Money(50000) &&
+                    program.Get<TextBlock>("AccountExpected").Text == LedgerEntry.Money(50000) &&
+                    program.Get<TextBlock>("AccountSaved").Text == LedgerEntry.Money(25000),
+                    "Painel usa o dia atual, inclui vencidas e mantém o Cofrinho e o ganho futuro fora do valor disponível");
+                Require(program.Get<ItemsControl>("AccountBillRows").Items.Count == 2 &&
+                    program.Get<ItemsControl>("AccountSubscriptionRows").Items.Count == 1 &&
+                    program.Get<TextBlock>("AccountOverdue").Text.Contains(LedgerEntry.Money(30000)), "Lista separa pendências e assinaturas");
+                program.Get<TextBox>("AccountPurchase").Text = "450";
+                Require(program.Get<TextBlock>("AccountSimulation").Text.Contains(LedgerEntry.Money(5000)) &&
+                    store.Month(today).Count == 2, "Simulação indica a diferença e não lança a compra");
+                var preview = new Program(store, () => today);
+                preview.Render(folder, "Account", 1120, 840, "Acompanhar-conta");
+                preview.dark = true;
+                preview.ApplyTheme();
+                preview.Render(folder, "Account", 780, 590, "Acompanhar-conta-compacto");
+                preview.window.Close();
+                program.Get<Button>("NavigateBack").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Require(program.currentPage == "Summary" && program.month == MonthStart(today.AddYears(-1)),
+                    "Voltar preserva o mês selecionado no Resumo");
+                program.Get<Button>("OpenAccount").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                program.Get<Button>("AccountBills").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Require(program.currentPage == "Bills" && program.Get<DataGrid>("BillGrid").Items.Count == 2,
+                    "O painel abre as pendências até o fim do mês, inclusive vencidas");
+                program.window.Close();
+            }
+        }
+
+        private static void VerifyGoalPurchaseAndPrivateBackup(string folder)
+        {
+            DateTime today = new DateTime(2026, 11, 25);
+            string file = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".sqlite3");
+            using (var store = new LedgerStore(file))
+            {
+                store.SetOpeningBalance(today, 83400);
+                store.AddReserveMovement("Banco", today, 30000, false, null, true);
+                Require(store.AvailableBalance(today) == 83400 && store.ReserveBalances(today).Single().Balance == 30000,
+                    "Saldo já guardado entra no Cofrinho sem descontar do disponível inicial");
+                store.SaveSavingsGoal(0, "Moto", 30000);
+                var goal = store.SavingsGoals().Single();
+                var place = store.GoalFundingByPlace(goal.Id).Single();
+                store.MoveGoalFunds(goal.Id, place.PlaceId, 30000, false);
+                try { store.BuyFromGoal(goal.Id, place.PlaceId, 31000, today, "Fictício", "Compras"); }
+                catch (IOException) { }
+                Require(store.Month(today).Count == 0 && store.SavingsGoals().Single().Saved == 30000,
+                    "Falha na compra preserva a despesa e a alocação");
+                store.BuyFromGoal(goal.Id, place.PlaceId, 20000, today, "Compra fictícia da moto", "Compras");
+                Require(store.Month(today).Single().Cents == 20000 && store.AvailableBalance(today) == 83400 &&
+                    store.SavingsGoals().Single().Saved == 10000 && store.SavingsGoals().Single().Spent == 20000,
+                    "Compra da meta baixa a reserva e registra uma única despesa");
+                store.SetGoalArchived(goal.Id, true);
+                Require(store.SavingsGoals().Count == 0 && store.SavingsGoals(true).Single().Spent == 20000 &&
+                    store.GoalFundingByPlace(goal.Id).Single().Free == 10000, "Arquivar preserva o histórico e libera a sobra");
+
+                string backup = Path.Combine(folder, "protegido-teste.spentz");
+                const string password = "frase longa de teste 2026";
+                store.SaveProtectedBackup(backup, password);
+                Require(!System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(backup)).Contains("Compra fictícia"),
+                    "Dados do backup não aparecem em texto no arquivo");
+                bool denied = false;
+                try { store.DescribeBackup(backup, "senha errada do teste"); }
+                catch (IOException) { denied = true; }
+                Require(denied && store.Month(today).Count == 1, "Senha errada não altera os dados");
+                store.ResetRecords();
+                string safety = store.RestoreBackup(backup, password, password);
+                Require(safety.EndsWith(".spentz") && File.Exists(safety) && store.SavingsGoals(true).Count == 1 &&
+                    store.GoalPurchases(goal.Id).Count == 1, "Backup protegido restaura compras, metas arquivadas e cria recuperação protegida");
+                store.SetGoalArchived(goal.Id, false);
+                store.UndoGoalPurchase(goal.Id, store.GoalPurchases(goal.Id).Single().ExpenseId);
+                Require(store.Month(today).Count == 0 && store.SavingsGoals().Single().Saved == 20000 &&
+                    store.AvailableBalance(today) == 83400, "Desfazer compra devolve valor à meta");
+            }
+        }
+
+        private static void VerifySavingsGoals(string folder)
+        {
+            DateTime today = new DateTime(2026, 11, 25);
+            using (LedgerStore store = new LedgerStore(Path.Combine(folder, Guid.NewGuid().ToString("N") + ".sqlite3")))
+            {
+                store.AddReserveMovement("Banco", today, 100000, false);
+                decimal available = store.AvailableBalance(today);
+                Program program = new Program(store, () => today);
+                ShowTestWindow(program);
+                program.Navigate("Reserves");
+                program.Get<Button>("OpenGoals").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Require(program.currentPage == "Goals" && program.ParentPage() == "Reserves", "Metas abre dentro do Cofrinho");
+                program.Get<Button>("GoalArchiveList").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Require(program.currentPage == "ArchivedGoals" && program.ParentPage() == "Goals" &&
+                    program.Get<TextBlock>("GoalStatus").Text == "Nenhuma meta arquivada." &&
+                    (string)program.Get<Button>("NavigateBack").Content == "‹  Voltar para Metas", "Lista vazia tem seu próprio botão Voltar");
+                program.Get<Button>("NavigateBack").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Require(program.currentPage == "Goals" && program.Get<WrapPanel>("GoalPageActions").Visibility == Visibility.Visible,
+                    "Voltar das arquivadas recupera as metas ativas");
+                DriveDialog(program, "CreateGoal", dialog =>
+                {
+                    Field<TextBox>(dialog, "Nome da meta").Text = "Moto";
+                    Field<TextBox>(dialog, "Quanto você quer guardar (R$)").Text = "12000";
+                    Press(dialog, "Salvar meta");
+                });
+                store.SaveSavingsGoal(0, "Viagem", 200000);
+                SavingsGoal moto = store.SavingsGoals().Single(goal => goal.Name == "Moto");
+                SavingsGoal viagem = store.SavingsGoals().Single(goal => goal.Name == "Viagem");
+                long bank = store.GoalFundingByPlace(moto.Id).Single().PlaceId;
+                DriveDialog(program, "reservar valor", () => program.EditGoalFunding(moto, false), dialog =>
+                {
+                    Field<TextBox>(dialog, "Valor (R$)").Text = "700";
+                    Press(dialog, "Reservar valor");
+                });
+                store.MoveGoalFunds(viagem.Id, bank, 20000, false);
+                bool blocked = false;
+                try { store.AddReserveMovement("Banco", today, 10001, true); }
+                catch (IOException) { blocked = true; }
+                Require(blocked && store.AvailableBalance(today) == available && store.ReserveBalances(today).Single().Balance == 100000 &&
+                    store.GoalFundingByPlace(moto.Id).Single().Free == 10000, "Metas no mesmo banco não duplicam dinheiro e protegem a parte reservada");
+                store.MoveGoalFunds(moto.Id, bank, 10000, true);
+                store.AddReserveMovement("Banco", today, 20000, true);
+                Require(store.SavingsGoals().Single(goal => goal.Id == moto.Id).Saved == 60000 &&
+                    store.GoalFundingByPlace(moto.Id).Single().Free == 0, "Liberar um valor permite sacar sem alterar outra meta");
+                Program preview = new Program(store, () => today);
+                preview.Render(folder, "Goals", 980, 680, "Metas");
+                preview.Render(folder, "Goals", 780, 550, "Metas-compacto");
+                preview.window.Close();
+                string backup = Path.Combine(folder, "backup-metas.sqlite3");
+                store.SaveBackup(backup);
+                store.ResetRecords();
+                Require(store.SavingsGoals().Count == 0, "O reset limpa as metas");
+                store.RestoreBackup(backup);
+                Require(store.SavingsGoals().Count == 2 && store.ReserveBalances(today).Single().Balance == 80000,
+                    "Restauração recupera metas e valores por local");
+                store.SetGoalArchived(moto.Id, true);
+                program.Get<Button>("GoalArchiveList").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Require(program.Get<StackPanel>("GoalCards").Children.Count == 1, "Subtela lista somente metas arquivadas");
+                var archivePreview = new Program(store, () => today);
+                archivePreview.Render(folder, "ArchivedGoals", 980, 680, "Metas-arquivadas");
+                archivePreview.window.Close();
+                program.GoBack();
+                Require(program.currentPage == "Goals" && program.Get<StackPanel>("GoalCards").Children.Count == 1,
+                    "Voltar das arquivadas leva às metas ativas");
+                program.GoBack();
+                Require(program.currentPage == "Reserves", "Voltar retorna ao Cofrinho");
+                program.window.Close();
+            }
+        }
+
         private static void VerifyChatCategoryMatching(string folder)
         {
             DateTime today = new DateTime(2026, 11, 21);
@@ -20,7 +297,7 @@ namespace SpentZ
                     "carta de pokemon", "compras carta pokemom" };
                 foreach (string description in descriptions)
                 {
-                    program.Get<TextBox>("ChatInput").Text = "20 " + description;
+                    program.ChatText = "20 " + description;
                     program.RegisterMessage();
                     LedgerEntry saved = store.Month(today).First();
                     Require(saved.Category == category && saved.Description == description,
@@ -75,7 +352,7 @@ namespace SpentZ
                     Press(dialog, "Salvar limite");
                 });
                 program.Navigate("Chat");
-                program.Get<TextBox>("ChatInput").Text = "20 cigarro";
+                program.ChatText = "20 cigarro";
                 program.Get<Button>("Send").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Require(store.Month(today).Single().Category == "Cigarro" &&
                     store.CategoryLimits(today.AddMonths(1))["Cigarro"] == 10000,
@@ -200,7 +477,7 @@ namespace SpentZ
                 Require(store.Month(today).Count(entry => entry.Description == "Aluguel") == 1, "Vínculo evita despesa duplicada");
                 program.Get<Button>("BillPlansView").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 agenda.SelectedItem = agenda.Items.Cast<BillOccurrence>().Single(row => row.Plan.Id == rent.Id);
-                DriveDialog(program, "BillRevise", dialog =>
+                DriveDialog(program, "BillEdit", dialog =>
                 {
                     Field<TextBox>(dialog, "Próxima data (dia/mês/ano)").Text = "26/12/2026";
                     Field<TextBox>(dialog, "Novo valor (R$)").Text = "480";
@@ -368,7 +645,7 @@ namespace SpentZ
                 preview.Render(folder, "Summary", 780, 550, "Resumo-previsao-detalhada");
                 preview.window.Close();
                 program.Navigate("Chat");
-                program.Get<TextBox>("ChatInput").Text = "50 Netflix";
+                program.ChatText = "50 Netflix";
                 program.RegisterMessage();
                 DriveDialog(program, "QuickFixedExpense", dialog =>
                 {

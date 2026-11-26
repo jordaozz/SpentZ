@@ -14,11 +14,14 @@ namespace SpentZ
         internal static readonly CultureInfo Brazilian = CultureInfo.GetCultureInfo("pt-BR");
         private const string AmountPattern = @"(?:[0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{1,2})?|[0-9]+(?:[,.][0-9]{1,2})?)";
         private static readonly Regex ChatPattern = new Regex(@"^(?:R\$\s*)?(?<amount>" + AmountPattern +
-            @")(?:\s+(?<description>.*?))?$", RegexOptions.IgnoreCase);
+            @")(?:\s+re(?:al|ais)\b)?(?:\s+(?<description>.*?))?$", RegexOptions.IgnoreCase);
         private static readonly Regex ChatEndingAmount = new Regex(@"^(?<description>.+?)\s+(?:R\$\s*)?(?<amount>" +
-            AmountPattern + @")$", RegexOptions.IgnoreCase);
-        private static readonly Regex IncomePrefix = new Regex(@"^\s*(?:recebi|ganhei|entrou)\s+", RegexOptions.IgnoreCase);
-        private static readonly Regex ExpensePrefix = new Regex(@"^\s*(?:gastei|paguei)\s+", RegexOptions.IgnoreCase);
+            AmountPattern + @")(?:\s+re(?:al|ais)\b)?$", RegexOptions.IgnoreCase);
+        internal const string ChatStart = @"^\s*(?:(?:hoje|agora)(?:\s*,\s*|\s+))?(?:eu\s+)?";
+        internal static readonly Regex IncomePrefix = new Regex(ChatStart + @"(?<keyword>recebi|ganhei|entrou|vendi|faturei|lucrei)\b\s*", RegexOptions.IgnoreCase);
+        internal static readonly Regex ExpensePrefix = new Regex(ChatStart + @"(?<keyword>gastei|paguei|comprei|desembolsei|quitei)\b\s*", RegexOptions.IgnoreCase);
+        private static readonly Regex TentativeChat = new Regex(ChatStart +
+            @"(?:(?:n[aã]o|ainda\s+n[aã]o)\s+(?:gastei|paguei|comprei|recebi|ganhei|vendi|parcelei|quitei|assinei|renovei|fiz\s+(?:uma|a)\s+assinatura)|cancelei\s+(?:(?:a|minha)\s+)?assinatura|(?:vou|pretendo|preciso)\s+(?:gastar|pagar|comprar|receber|ganhar|vender|parcelar))\b", RegexOptions.IgnoreCase);
         private static readonly Regex CategoryWord = new Regex(@"[\p{L}\p{N}]+");
         internal static readonly string[] CategoryNames = {
             "Alimentação", "Transporte", "Moradia", "Saúde", "Educação", "Compras", "Lazer", "Sem categoria"
@@ -28,7 +31,7 @@ namespace SpentZ
         };
         private static readonly string[] IncomeKeywords = {
             @"salário|salario|pagamento|holerite",
-            @"freela|freelance|bico|extra|comissão",
+            @"freela|free\s*lance|bico|extra|comissão",
             @"venda|vendas"
         };
         private static readonly string[] CategoryKeywords = {
@@ -38,7 +41,7 @@ namespace SpentZ
             @"farmácia|remédio|consulta|dentista|médico",
             @"curso|escola|faculdade|livro",
             @"roupa|sapato|presente",
-            @"cinema|show|teatro|netflix|spotify"
+            @"cinema|show|teatro|netflix|spotify|discord"
         };
 
         public long Id { get; set; }
@@ -74,8 +77,14 @@ namespace SpentZ
             return true;
         }
 
+        internal static bool IsTentativeChat(string text)
+        {
+            return TentativeChat.IsMatch(text) || text.TrimEnd().EndsWith("?", StringComparison.Ordinal);
+        }
+
         internal static LedgerEntry FromMessage(string text, DateTime date, IEnumerable<string> custom = null, bool amountAtEnd = false)
         {
+            if (IsTentativeChat(text)) return null;
             Match prefix = IncomePrefix.Match(text);
             Match verb = prefix.Success ? prefix : ExpensePrefix.Match(text);
             string body = text.Substring(verb.Length).Trim();
@@ -86,6 +95,7 @@ namespace SpentZ
                 return null;
             string description = match.Groups["description"].Value.Trim();
             description = Regex.Replace(description, @"^(?:em|no|na|com|de)\s+", "", RegexOptions.IgnoreCase);
+            description = Regex.Replace(description, @"^(?:um|uma)\s+", "", RegexOptions.IgnoreCase);
             string[] names = prefix.Success ? IncomeCategories : CategoryNames;
             string[] keywords = prefix.Success ? IncomeKeywords : CategoryKeywords;
             string category = names[names.Length - 1];
@@ -100,6 +110,8 @@ namespace SpentZ
                     break;
                 }
             }
+            if (prefix.Success && prefix.Groups["keyword"].Value.Equals("vendi", StringComparison.OrdinalIgnoreCase) &&
+                category == IncomeCategories.Last()) category = "Vendas";
             return new LedgerEntry {
                 Date = date.Date,
                 Description = description.Length == 0 ? (prefix.Success ? "Ganho sem descrição" : "Gasto sem descrição") : description,
@@ -240,6 +252,8 @@ namespace SpentZ
             {
                 Check(status);
                 Check(sqlite3_busy_timeout(database, 3000));
+                Execute("PRAGMA trusted_schema = OFF");
+                Execute("PRAGMA temp_store = MEMORY");
                 Execute("PRAGMA foreign_keys = ON");
                 if (initialize) EnsureSchema();
             }
@@ -265,6 +279,7 @@ namespace SpentZ
                 Execute("CREATE INDEX IF NOT EXISTS incomes_date ON incomes(date)");
                 EnsureBillingSchema();
                 EnsureReserveSchema();
+                EnsureGoalsSchema();
                 EnsureClosureSchema();
                 EnsureBudgetSchema();
                 EnsureOpeningSchema();
@@ -311,8 +326,11 @@ namespace SpentZ
                 Execute("DELETE FROM income_receipts");
                 Execute("DELETE FROM bill_waivers");
                 Execute("DELETE FROM bill_plans");
+                Execute("DELETE FROM goal_purchases");
                 Execute("DELETE FROM expenses");
                 Execute("DELETE FROM incomes");
+                Execute("DELETE FROM goal_funds");
+                Execute("DELETE FROM savings_goals");
                 Execute("DELETE FROM reserve_moves");
                 Execute("DELETE FROM reserve_places");
                 Execute("DELETE FROM month_closures");
@@ -329,43 +347,42 @@ namespace SpentZ
             }
         }
 
-        internal string RestoreBackup(string source)
+        internal string RestoreBackup(string source, string password = null, string recoveryPassword = null)
         {
-            string path = CheckBackupPath(source);
-            using (LedgerStore incoming = new LedgerStore(path, ReadOnly, false))
-            using (LedgerStore snapshot = new LedgerStore(":memory:", ReadWriteCreate, false))
-            {
-                incoming.CopyInto(snapshot);
-                snapshot.ValidateBackup();
-                snapshot.EnsureSchema();
-                snapshot.ValidatePlannedData();
-
-                string recoveryFolder = Path.Combine(Path.GetDirectoryName(filename), "Backups");
-                Directory.CreateDirectory(recoveryFolder);
-                string recovery = Path.Combine(recoveryFolder, "antes-da-restauracao-" +
-                    DateTime.Now.ToString("yyyy-MM-dd-HHmmss-fffffff", CultureInfo.InvariantCulture) + ".sqlite3");
-                SaveBackup(recovery);
-                snapshot.CopyInto(this);
-                return recovery;
-            }
+            using (LedgerStore snapshot = OpenValidatedSnapshot(source, password))
+                return RestoreSnapshot(snapshot, recoveryPassword);
         }
 
-        internal string DescribeBackup(string source)
+        internal string RestoreSnapshot(LedgerStore snapshot, string recoveryPassword)
         {
-            using (LedgerStore incoming = new LedgerStore(CheckBackupPath(source), ReadOnly, false))
+            string recoveryFolder = Path.Combine(Path.GetDirectoryName(filename), "Backups");
+            Directory.CreateDirectory(recoveryFolder);
+            string recovery = Path.Combine(recoveryFolder, "antes-da-restauracao-" +
+                DateTime.Now.ToString("yyyy-MM-dd-HHmmss-fffffff", CultureInfo.InvariantCulture) +
+                (recoveryPassword == null ? ".sqlite3" : ".spentz"));
+            if (recoveryPassword == null) SaveBackup(recovery);
+            else SaveProtectedBackup(recovery, recoveryPassword);
+            snapshot.CopyInto(this);
+            return recovery;
+        }
+
+        internal string DescribeBackup(string source, string password = null)
+        {
+            using (LedgerStore incoming = OpenValidatedSnapshot(source, password))
+                return incoming.DescribeSnapshot();
+        }
+
+        internal string DescribeSnapshot()
+        {
+            using (Statement entries = Prepare(@"SELECT COUNT(*), MIN(date), MAX(date)
+                FROM (SELECT date FROM expenses UNION ALL SELECT date FROM incomes)", new object[0]))
             {
-                incoming.ValidateBackup();
-                string dates = "SELECT date FROM expenses";
-                if (incoming.HasColumn("incomes", "date")) dates += " UNION ALL SELECT date FROM incomes";
-                using (Statement entries = incoming.Prepare("SELECT COUNT(*), MIN(date), MAX(date) FROM (" + dates + ")", new object[0]))
-                {
-                    if (entries.Step() != Row || entries.Integer(0) == 0)
-                        return "Este backup tem 0 lançamentos de entrada ou despesa. Ele ainda pode conter contas futuras e reservas.";
-                    DateTime first = ReadOptionalDate(entries.Text(1)).Value;
-                    DateTime last = ReadOptionalDate(entries.Text(2)).Value;
-                    return entries.Integer(0) + " lançamentos entre " + first.ToString("dd/MM/yyyy", LedgerEntry.Brazilian) +
-                        " e " + last.ToString("dd/MM/yyyy", LedgerEntry.Brazilian) + ".";
-                }
+                if (entries.Step() != Row || entries.Integer(0) == 0)
+                    return "Este backup tem 0 lançamentos de entrada ou despesa. Ele ainda pode conter contas futuras e reservas.";
+                DateTime first = ReadOptionalDate(entries.Text(1)).Value;
+                DateTime last = ReadOptionalDate(entries.Text(2)).Value;
+                return entries.Integer(0) + " lançamentos entre " + first.ToString("dd/MM/yyyy", LedgerEntry.Brazilian) +
+                    " e " + last.ToString("dd/MM/yyyy", LedgerEntry.Brazilian) + ".";
             }
         }
 
@@ -394,6 +411,9 @@ namespace SpentZ
 
         private void ValidateBackup()
         {
+            using (Statement objects = Prepare(@"SELECT 1 FROM sqlite_master WHERE type IN ('view', 'trigger')
+                OR (type = 'table' AND UPPER(TRIM(sql)) LIKE 'CREATE VIRTUAL TABLE%') LIMIT 1", new object[0]))
+                if (objects.Step() == Row) throw new IOException("O backup contém uma estrutura incompatível com o SpentZ.");
             using (Statement check = Prepare("PRAGMA quick_check(1)", new object[0]))
             {
                 if (check.Step() != Row || check.Text(0) != "ok")
@@ -404,11 +424,12 @@ namespace SpentZ
             {
                 HashSet<string> supported = new HashSet<string> { "expenses", "incomes", "bill_plans", "bill_payments",
                     "income_receipts", "preferences", "month_closures", "reserve_places", "reserve_moves",
-                    "custom_categories", "category_limits", "bill_waivers", "opening_balance" };
+                    "custom_categories", "category_limits", "bill_waivers", "opening_balance", "savings_goals", "goal_funds", "goal_purchases" };
                 while (schema.Step() == Row) tables.Add(schema.Text(0));
                 if (!tables.Contains("expenses") || !tables.IsSubsetOf(supported) ||
                     tables.Contains("bill_plans") != tables.Contains("bill_payments") ||
-                    tables.Contains("reserve_places") != tables.Contains("reserve_moves"))
+                    tables.Contains("reserve_places") != tables.Contains("reserve_moves") ||
+                    tables.Contains("savings_goals") != tables.Contains("goal_funds"))
                     throw new IOException("O arquivo selecionado não é um backup do SpentZ.");
             }
             ValidateEntries("expenses");
@@ -423,7 +444,12 @@ namespace SpentZ
             ValidateReserveData();
             using (Statement references = Prepare("PRAGMA foreign_key_check", new object[0]))
                 if (references.Step() != Done)
-                    throw new IOException("O backup contém pagamentos sem a cobrança ou despesa correspondente.");
+                    throw new IOException("O backup contém vínculos com registros ausentes.");
+            using (Statement purchase = Prepare(@"SELECT 1 FROM goal_purchases p
+                JOIN expenses e ON e.id = p.expense_id JOIN reserve_moves m ON m.id = p.move_id
+                WHERE e.cents <> m.cents OR e.date <> m.date OR m.direction <> -1 OR m.initial_reserve <> 0 LIMIT 1", new object[0]))
+                if (purchase.Step() == Row)
+                    throw new IOException("O backup contém uma compra de meta que não corresponde à movimentação do Cofrinho.");
         }
 
         private void ValidateEntries(string table)
@@ -468,11 +494,14 @@ namespace SpentZ
             try
             {
                 Execute(@"UPDATE expenses SET date = ?, description = ?, category = ?, cents = ?, version = ? WHERE id = ? AND version = ?
+                    AND (NOT EXISTS(SELECT 1 FROM goal_purchases WHERE expense_id = expenses.id) OR (date = ? AND cents = ?))
                     AND ? >= COALESCE((SELECT SUM(cents) FROM incomes WHERE refund_of = expenses.id), 0)
                     AND NOT EXISTS(SELECT 1 FROM incomes WHERE refund_of = expenses.id AND date < ?)",
-                    date, expense.Description, expense.Category, expense.Cents, version, expense.Id, expense.Version, expense.Cents, date);
+                    date, expense.Description, expense.Category, expense.Cents, version, expense.Id, expense.Version,
+                    date, expense.Cents, expense.Cents, date);
                 if (sqlite3_changes(database) == 0)
-                    throw new IOException("O gasto mudou ou a correção entra em conflito com um estorno registrado.");
+                    throw new IOException(IsGoalPurchase(expense.Id, true) ? "Desfaça a compra na página Metas para corrigir a data ou o valor." :
+                        "O gasto mudou ou a correção entra em conflito com um estorno registrado.");
                 Execute("UPDATE incomes SET description = ?, category = ?, version = lower(hex(randomblob(16))) WHERE refund_of = ?",
                     "Estorno · " + expense.Description, expense.Category, expense.Id);
                 Execute("COMMIT");
@@ -488,11 +517,14 @@ namespace SpentZ
         internal bool Delete(LedgerEntry entry)
         {
             string table = entry.IsIncome ? "incomes" : "expenses";
-            string linked = entry.IsIncome ? "" : " AND NOT EXISTS(SELECT 1 FROM incomes WHERE refund_of = expenses.id)";
+            string linked = entry.IsIncome ? "" : @" AND NOT EXISTS(SELECT 1 FROM incomes WHERE refund_of = expenses.id)
+                AND NOT EXISTS(SELECT 1 FROM goal_purchases WHERE expense_id = expenses.id)";
             Execute("DELETE FROM " + table + " WHERE id = ? AND version = ?" + linked, entry.Id, entry.Version ?? "");
             if (sqlite3_changes(database) != 0) return true;
             if (!entry.IsIncome && HasRefunds(entry))
                 throw new IOException("Este gasto tem estornos. Remova os estornos vinculados antes de excluir o gasto.");
+            if (!entry.IsIncome && IsGoalPurchase(entry.Id, true))
+                throw new IOException("Desfaça a compra na página Metas para remover este gasto.");
             return false;
         }
 
@@ -503,10 +535,10 @@ namespace SpentZ
                 return query.Step() == Row ? query.Integer(0) : 0;
         }
 
-        internal decimal AvailableBalance(DateTime date)
+        internal decimal AvailableBalance(DateTime date, DateTime? through = null)
         {
             DateTime start = new DateTime(date.Year, date.Month, 1);
-            DateTime end = start.AddMonths(1);
+            DateTime end = through.HasValue ? through.Value.Date.AddDays(1) : start.AddMonths(1);
             OpeningBalance opening = GetOpeningBalance();
             if (opening != null && opening.Date < end)
                 return AvailableSinceOpening(opening, end);
@@ -516,7 +548,7 @@ namespace SpentZ
         internal decimal BalanceForPeriod(DateTime start, DateTime end)
         {
             using (Statement query = Prepare(@"SELECT COALESCE(SUM(cents * direction), 0) FROM reserve_moves
-                WHERE date >= ? AND date < ?", new object[] { IsoDate(start), IsoDate(end) }))
+                WHERE date >= ? AND date < ? AND initial_reserve = 0", new object[] { IsoDate(start), IsoDate(end) }))
                 return LedgerTotal(start, end, true) - LedgerTotal(start, end) - (query.Step() == Row ? query.Integer(0) : 0);
         }
 
@@ -579,7 +611,9 @@ namespace SpentZ
                 {
                     object value = args[index];
                     string text = value as string;
-                    if (text == null)
+                    if (value == null)
+                        Check(sqlite3_bind_null(handle, index + 1));
+                    else if (text == null)
                         Check(sqlite3_bind_int64(handle, index + 1, (long)value));
                     else
                         Check(sqlite3_bind_text(handle, index + 1, Utf8(text), -1, new IntPtr(-1)));
@@ -640,6 +674,9 @@ namespace SpentZ
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int sqlite3_prepare_v2(IntPtr db, byte[] sql, int length, out IntPtr statement, IntPtr tail);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int sqlite3_bind_text(IntPtr statement, int index, byte[] value, int length, IntPtr destructor);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int sqlite3_bind_int64(IntPtr statement, int index, long value);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int sqlite3_bind_null(IntPtr statement, int index);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int sqlite3_column_type(IntPtr statement, int column);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int sqlite3_column_bytes(IntPtr statement, int column);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int sqlite3_step(IntPtr statement);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern int sqlite3_finalize(IntPtr statement);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] private static extern long sqlite3_column_int64(IntPtr statement, int column);

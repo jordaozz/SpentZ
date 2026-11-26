@@ -63,7 +63,8 @@ namespace SpentZ
             using (Statement query = Prepare(@"SELECT
                 (SELECT COALESCE(SUM(cents), 0) FROM incomes WHERE date >= ? AND date < ? AND included_in_opening = 0),
                 (SELECT COALESCE(SUM(cents), 0) FROM expenses WHERE date >= ? AND date < ? AND included_in_opening = 0),
-                (SELECT COALESCE(SUM(cents * direction), 0) FROM reserve_moves WHERE date >= ? AND date < ? AND included_in_opening = 0)",
+                (SELECT COALESCE(SUM(cents * direction), 0) FROM reserve_moves
+                    WHERE date >= ? AND date < ? AND included_in_opening = 0 AND initial_reserve = 0)",
                 new object[] { from, until, from, until, from, until }))
                 return query.Step() == Row ? opening.Cents + (decimal)query.Integer(0) - query.Integer(1) - query.Integer(2) : opening.Cents;
         }
@@ -111,7 +112,7 @@ namespace SpentZ
                 Text = correcting ? "Corrija o valor informado em " + ReportDate(original.Date) +
                     ". A correção recalcula o saldo a partir daquela data e preserva os lançamentos. Para uma diferença de hoje, use Ajustar saldo." :
                     "Informe o valor que você tem hoje na conta e em dinheiro, sem incluir o Cofrinho. " +
-                    "O SpentZ usa esse valor como ponto de partida e continua somando entradas e descontando despesas daqui em diante.",
+                    "O SpentZ usa esse valor como ponto de partida. Para registrar dinheiro que já estava separado, use Já tinha guardado no Cofrinho.",
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10)
             });
             if (!correcting && !firstAccess && !store.IsBlankForOpening())

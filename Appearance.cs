@@ -150,6 +150,7 @@ namespace SpentZ
             Color side = ToColor(dark ? "#151A24" : "#172638");
             window.Resources["Sidebar"] = new LinearGradientBrush(side, Mix(side, seed, .18), 65);
             Get<Button>("ThemeToggle").Content = dark ? "Modo claro" : "Modo noturno";
+            QueueChatHighlight();
             if (currentPage == "Summary") RefreshBudget();
         }
 

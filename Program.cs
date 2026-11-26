@@ -18,9 +18,9 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("SpentZ")]
 [assembly: AssemblyProduct("SpentZ")]
-[assembly: AssemblyVersion("1.0.3.0")]
-[assembly: AssemblyFileVersion("1.0.3.0")]
-[assembly: AssemblyInformationalVersion("1.0.3")]
+[assembly: AssemblyVersion("1.2.1.0")]
+[assembly: AssemblyFileVersion("1.2.1.0")]
+[assembly: AssemblyInformationalVersion("1.2.1")]
 
 namespace SpentZ
 {
@@ -121,20 +121,21 @@ namespace SpentZ
             Click("NextMonth", delegate { ShiftMonth(1); });
             Click("ReturnCurrentMonth", ReturnToCurrentMonth);
             WireNavigation();
+            WireAccount();
             Click("Send", RegisterMessage);
             foreach (string name in new[] { "ExampleMeal", "ExampleRide", "ExampleIncome" })
             {
                 Button example = Get<Button>(name);
                 example.Click += delegate
                 {
-                    TextBox input = Get<TextBox>("ChatInput");
-                    input.Text = (string)example.Content;
-                    input.CaretIndex = input.Text.Length;
-                    input.Focus();
+                    ChatText = (string)example.Content;
+                    Get<RichTextBox>("ChatInput").Focus();
                 };
             }
             Click("Edit", delegate { EditEntry(SelectedEntry("HistoryGrid")); });
+            Click("HistorySubscription", delegate { ConvertSubscription(SelectedEntry("HistoryGrid")); });
             Click("ExpenseAdd", delegate { AddEntry(false); });
+            Click("HistoryAddIncome", delegate { AddEntry(true); });
             Click("QuickExpense", delegate { AddEntry(false); });
             Click("QuickIncome", delegate { AddEntry(true); });
             Click("Delete", delegate { ConfirmRemoval(SelectedEntry("HistoryGrid"), false); });
@@ -150,13 +151,27 @@ namespace SpentZ
             historyType.SelectedIndex = 0;
             historyType.SelectionChanged += delegate { RefreshHistory(); };
             Get<TextBox>("HistorySearch").TextChanged += delegate { RefreshHistory(); };
-            Get<TextBox>("ChatInput").KeyDown += delegate(object sender, KeyEventArgs args)
+            RichTextBox chat = Get<RichTextBox>("ChatInput");
+            chat.TextChanged += delegate { QueueChatHighlight(); };
+            DataObject.AddPastingHandler(chat, delegate(object sender, DataObjectPastingEventArgs args)
+            {
+                if (args.SourceDataObject.GetDataPresent(DataFormats.UnicodeText)) args.FormatToApply = DataFormats.UnicodeText;
+                else args.CancelCommand();
+            });
+            chat.PreviewKeyDown += delegate(object sender, KeyEventArgs args)
             {
                 if (args.Key != Key.Enter) return;
                 args.Handled = true;
                 Safely(RegisterMessage);
             };
             WireSelection("HistoryGrid", "Edit", "Delete");
+            Get<DataGrid>("HistoryGrid").SelectionChanged += delegate
+            {
+                Get<WrapPanel>("HistoryRowActions").Visibility = SelectedEntry("HistoryGrid") == null ?
+                    Visibility.Collapsed : Visibility.Visible;
+                Get<Button>("HistorySubscription").Visibility = CanTurnIntoSubscription(SelectedEntry("HistoryGrid")) ?
+                    Visibility.Visible : Visibility.Collapsed;
+            };
             WireSelection("IncomeGrid", "IncomeEdit", "IncomeDelete");
             WireSettings();
             LoadSettings();
@@ -170,7 +185,7 @@ namespace SpentZ
             RefreshChat();
             RefreshMonth();
             Navigate("Chat");
-            window.Loaded += delegate { Get<TextBox>("ChatInput").Focus(); };
+            window.Loaded += delegate { Get<RichTextBox>("ChatInput").Focus(); };
         }
 
         private void WireSelection(string gridName, string editName, string deleteName)
@@ -222,14 +237,16 @@ namespace SpentZ
             back.Visibility = parent == null ? Visibility.Collapsed : Visibility.Visible;
             if (parent != null)
             {
-                string name = (string)Get<Button>(parent + "Nav").Content;
+                string name = parent == "Goals" ? "Metas" : (string)Get<Button>(parent + "Nav").Content;
                 back.Content = "‹  Voltar para " + name;
                 AutomationProperties.SetName(back, "Voltar para " + name);
             }
-            foreach (string name in new[] { "Chat", "Summary", "Closures", "Income", "Reserves", "Bills", "History", "Backup", "Settings", "Help" })
-                Get<FrameworkElement>(name + "Page").Visibility = name == page ? Visibility.Visible : Visibility.Collapsed;
+            foreach (string name in new[] { "Chat", "Summary", "Account", "Closures", "Income", "Reserves", "Goals", "Bills", "History", "Backup", "Settings", "Help" })
+                Get<FrameworkElement>(name + "Page").Visibility = name == (page == "ArchivedGoals" ? "Goals" : page) ?
+                    Visibility.Visible : Visibility.Collapsed;
             string activeNav = page == "Backup" || page == "Help" ? "Settings"
-                : page == "Closures" ? "Summary" : page == "Bills" && showIncomePlans ? "Income" : page;
+                : page == "Closures" || page == "Account" ? "Summary" : page == "Goals" || page == "ArchivedGoals" ? "Reserves" :
+                page == "Bills" && showIncomePlans ? "Income" : page;
             foreach (string name in new[] { "Chat", "Summary", "Income", "Reserves", "Bills", "History", "Settings" })
             {
                 bool selected = name == activeNav;
@@ -260,6 +277,10 @@ namespace SpentZ
                     title = "Fechamentos mensais";
                     description = "Compare ganhos, despesas e saldo por mês.";
                     break;
+                case "Account":
+                    title = "Acompanhar conta";
+                    description = "Veja seu saldo de hoje e as contas que ainda faltam pagar.";
+                    break;
                 case "Income":
                     title = "Ganhos";
                     description = "Acompanhe salários, trabalhos extras e outras entradas.";
@@ -267,6 +288,14 @@ namespace SpentZ
                 case "Reserves":
                     title = "Cofrinho";
                     description = "Veja seus saldos por local e registre depósitos e saques.";
+                    break;
+                case "Goals":
+                    title = "Metas";
+                    description = "Veja quanto já separou para cada objetivo.";
+                    break;
+                case "ArchivedGoals":
+                    title = "Metas arquivadas";
+                    description = "Consulte o histórico ou reative uma meta.";
                     break;
                 case "History":
                     title = "Lançamentos";
@@ -301,13 +330,18 @@ namespace SpentZ
             if (page == "Summary") RefreshSummaryCharts();
             if (page == "Closures") LoadClosurePage();
             if (page == "Reserves") RefreshReservePage();
+            if (page == "Goals" || page == "ArchivedGoals")
+            {
+                RefreshGoals();
+                Get<ScrollViewer>("GoalsPage").ScrollToTop();
+            }
             if (page == "History") RefreshHistory();
             if (page == "Backup") RefreshBackupInfo();
             RefreshBillViews();
             if (isChat)
             {
                 Get<ScrollViewer>("ChatScroll").ScrollToEnd();
-                Get<TextBox>("ChatInput").Focus();
+                Get<RichTextBox>("ChatInput").Focus();
             }
             else Get<TextBlock>("PageTitle").Focus();
         }
@@ -325,7 +359,8 @@ namespace SpentZ
             return item.TypeDisplay + " registrado · " + item.AmountDisplay + " · " + item.Description + " · " + item.Category;
         }
 
-        private void AddBubble(string sender, string message, bool outgoing, LedgerEntry entry = null, string action = "Desfazer")
+        private void AddBubble(string sender, string message, bool outgoing, LedgerEntry entry = null,
+            string action = "Desfazer", BillPlan plan = null)
         {
             StackPanel messages = Get<StackPanel>("Messages");
             StackPanel content = new StackPanel();
@@ -334,24 +369,12 @@ namespace SpentZ
             TextBlock text = new TextBlock { Text = message, Margin = new Thickness(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap };
             if (entry != null) Paint(text, TextBlock.ForegroundProperty, entry.IsIncome ? "IncomeInk" : "ExpenseInk");
             content.Children.Add(text);
-            if (entry != null)
+            if (entry != null || plan != null)
             {
-                StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
-                if (entry.Kind != 2)
-                {
-                    Button edit = new Button { Style = (Style)window.Resources["Example"], Content = "Editar" };
-                    AutomationProperties.SetName(edit, "Editar " + entry.Description);
-                    edit.Click += delegate { Safely(delegate { EditEntry(entry); }); };
-                    actions.Children.Add(edit);
-                }
-                Button remove = new Button {
-                    Style = (Style)window.Resources["Example"], Content = action,
-                    HorizontalAlignment = HorizontalAlignment.Left
-                };
-                Paint(remove, Control.BackgroundProperty, "AccentSelection");
-                AutomationProperties.SetName(remove, action + " " + entry.Description + " de " + entry.AmountDisplay);
-                remove.Click += delegate { Safely(delegate { ConfirmRemoval(entry, true); }); };
-                actions.Children.Add(remove);
+                WrapPanel actions = new WrapPanel { Margin = new Thickness(0, 7, 0, 0) };
+                if (plan != null)
+                    actions.Children.Add(ChatAction("Ver em Contas futuras", plan.Description, () => OpenActivePlan(plan)));
+                else AddChatEntryActions(actions, entry, action);
                 content.Children.Add(actions);
             }
             Border bubble = new Border {
@@ -367,12 +390,53 @@ namespace SpentZ
             Get<ScrollViewer>("ChatScroll").ScrollToEnd();
         }
 
+        private void AddChatEntryActions(WrapPanel actions, LedgerEntry entry, string action)
+        {
+            if (entry.Kind != 2)
+            {
+                Button edit = ChatAction("Editar", entry.Description, () => EditEntry(entry));
+                edit.ContentTemplate = (DataTemplate)window.Resources["EditWithIcon"];
+                actions.Children.Add(edit);
+            }
+            if (CanTurnIntoSubscription(entry))
+                actions.Children.Add(ChatAction("Transformar em assinatura", entry.Description, () => ConvertSubscription(entry)));
+            Button remove = ChatAction(action, entry.Description + " de " + entry.AmountDisplay, () => ConfirmRemoval(entry, true));
+            Paint(remove, Control.BackgroundProperty, "AccentSelection");
+            actions.Children.Add(remove);
+        }
+
+        private Button ChatAction(string label, string description, Action run)
+        {
+            Button button = new Button { Style = (Style)window.Resources["Example"], Content = label };
+            AutomationProperties.SetName(button, label + " " + description);
+            button.Click += delegate { Safely(run); };
+            return button;
+        }
+
+        private const string ChatHelpForPending = "Descreva um lançamento já realizado ou use Gasto fixo ou Ganho fixo para agendar.";
+
         private void RegisterMessage()
         {
-            TextBox box = Get<TextBox>("ChatInput");
-            string message = box.Text.Trim();
+            RichTextBox box = Get<RichTextBox>("ChatInput");
+            string message = System.Text.RegularExpressions.Regex.Replace(ChatText.Trim(), @"[\r\n]+", " ");
             if (message.Length == 0) return;
+            if (message.Length > 240) { AddBubble(AppName, "Use até 240 caracteres por lançamento.", false); return; }
+            if (LedgerEntry.IsTentativeChat(message))
+            {
+                AddBubble(AppName, ChatHelpForPending, false);
+                return;
+            }
             string[] categories = store.ExpenseCategories();
+            if (!LedgerEntry.IncomePrefix.IsMatch(message) && ChatSubscription(message).Success)
+            {
+                OpenChatSubscription(message, categories);
+                return;
+            }
+            if (HasInstallmentIntent(message))
+            {
+                OpenChatInstallments(message, categories);
+                return;
+            }
             LedgerEntry entry = LedgerEntry.FromMessage(message, Today, categories);
             if (entry != null && LedgerEntry.HasAmbiguousAmount(message))
             {
@@ -385,11 +449,11 @@ namespace SpentZ
             }
             if (entry != null)
                 store.Save(entry);
-            box.Clear();
+            ChatText = "";
             AddBubble("Você", message, true);
             AddBubble(AppName, entry == null
                 ? "Informe o valor em reais. Tente 42,90 almoço, almoço 42,90 ou recebi 150 freela."
-                : Confirm(entry), false, entry);
+                : Confirm(entry) + ChatLimitNotice(entry), false, entry);
             if (entry != null)
             {
                 month = new DateTime(entry.Date.Year, entry.Date.Month, 1);
@@ -400,12 +464,12 @@ namespace SpentZ
 
         private LedgerEntry ChooseChatAmount(LedgerEntry first, LedgerEntry last)
         {
-            Window dialog = CreateDialog("Qual é o valor do gasto?", 410);
+            Window dialog = CreateDialog(first.IsIncome ? "Qual é o valor do ganho?" : "Qual é o valor do gasto?", 410);
             StackPanel panel = new StackPanel { Margin = new Thickness(20) };
             ComboBox choice = new ComboBox { ItemsSource = new[] { first, last }.Select(item =>
                 item.AmountDisplay + " · " + item.Description).ToArray(), SelectedIndex = 0 };
             AddField(panel, "Como você quer registrar?", choice);
-            Button confirm = PrimaryDialogButton("Confirmar gasto");
+            Button confirm = PrimaryDialogButton(first.IsIncome ? "Confirmar ganho" : "Confirmar gasto");
             confirm.Click += delegate { dialog.DialogResult = true; };
             panel.Children.Add(DialogActions(confirm));
             dialog.Content = panel;
@@ -818,7 +882,9 @@ namespace SpentZ
 
         private static string CsvText(string value)
         {
-            string trimmed = value.TrimStart();
+            string trimmed = value.Normalize(NormalizationForm.FormKC).TrimStart();
+            while (trimmed.Length > 0 && CharUnicodeInfo.GetUnicodeCategory(trimmed[0]) == UnicodeCategory.Format)
+                trimmed = trimmed.Substring(1).TrimStart();
             if ((value.Length > 0 && "\t\r\n".IndexOf(value[0]) >= 0) ||
                 (trimmed.Length > 0 && "=+-@".IndexOf(trimmed[0]) >= 0))
                 value = "'" + value;
@@ -851,11 +917,11 @@ namespace SpentZ
                     program.Render(folder, "Backup", 780, 550, "Backup-compact");
                     program.Get<Button>("ChatNav").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     program.Get<Button>("ExampleMeal").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    Require(program.Get<TextBox>("ChatInput").Text == "42,90 almoço" && store.Recent().Count == 0, "Exemplo preenche o chat");
+                    Require(program.ChatText == "42,90 almoço" && store.Recent().Count == 0, "Exemplo preenche o chat");
                     program.Get<Button>("Send").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    program.Get<TextBox>("ChatInput").Text = "18 Uber";
+                    program.ChatText = "18 Uber";
                     program.Get<Button>("Send").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    program.Get<TextBox>("ChatInput").Text = "12.3456";
+                    program.ChatText = "12.3456";
                     program.Get<Button>("Send").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Require(program.monthlyExpenses.Count == 2, "Mensagens válidas e inválidas");
                     Require(program.Get<TextBlock>("Total").Text == LedgerEntry.Money(6090), "Total do painel");
@@ -872,12 +938,12 @@ namespace SpentZ
                     Require(LedgerEntry.FromMessage("almoço 12.34", DateTime.Today).Cents == 1234, "Valor ao fim com ponto decimal");
                     Require(LedgerEntry.FromMessage("paguei R$ 1.234,56 na farmácia", DateTime.Today).Cents == 123456, "Valor brasileiro com milhar");
                     Require(LedgerEntry.FromMessage("0 almoço", DateTime.Today) == null, "Rejeição de valor zero");
-                    program.Get<TextBox>("ChatInput").Text = "recebi 2800 salário";
+                    program.ChatText = "recebi 2800 salário";
                     program.Get<Button>("Send").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     LedgerEntry salary = store.Month(DateTime.Today, true).Single();
                     Require(salary.IsIncome && salary.Category == "Salário" && salary.Cents == 280000, "Ganho registrado no chat");
                     Require(program.Get<TextBlock>("SummaryBalance").Text == LedgerEntry.Money(273910), "Saldo mensal desconta despesas");
-                    program.Get<TextBox>("ChatInput").Text = "50 peça";
+                    program.ChatText = "50 peça";
                     program.Get<Button>("Send").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     StackPanel confirmation = (StackPanel)((Border)program.Get<StackPanel>("Messages").Children.Cast<UIElement>().Last()).Child;
                     Require(Fields<Button>(confirmation).Any(button => button.Content.Equals("Desfazer")) &&
@@ -1003,6 +1069,11 @@ namespace SpentZ
                 VerifyChatCategoryMatching(folder);
                 VerifyForecastAndFirstPayment(folder);
                 VerifyStaleEdits(folder);
+                VerifySavingsGoals(folder);
+                VerifyChatLanguage(folder);
+                VerifyChatSubscriptions(folder);
+                VerifyAccountOverview(folder);
+                VerifyGoalPurchaseAndPrivateBackup(folder);
                 File.WriteAllText(result, "OK");
                 return 0;
             }
@@ -1439,9 +1510,8 @@ namespace SpentZ
                     csv.Contains("\"Mercado Pago\";\"09/2026\";150,00"), "Relatório exporta saldos de cada local");
 
                 program.Navigate("Reserves");
-                DriveDialog(program, "ReserveMove", dialog =>
+                DriveDialog(program, "ReserveWithdraw", dialog =>
                 {
-                    Field<ComboBox>(dialog, "O que você quer fazer?").SelectedIndex = 1;
                     Field<ComboBox>(dialog, "De onde sai o dinheiro?").SelectedItem = "PicPay";
                     Field<TextBox>(dialog, "Valor (R$)").Text = "50";
                     Field<TextBox>(dialog, "Data da movimentação (dia/mês/ano)").Text = "10/10/2026";
@@ -1670,7 +1740,7 @@ namespace SpentZ
 
         private static void Press(Window dialog, string button)
         {
-            Fields<Button>(dialog).Single(item => (string)item.Content == button)
+            Fields<Button>(dialog).Single(item => object.Equals(item.Content, button))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         }
 

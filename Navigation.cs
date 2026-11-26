@@ -36,7 +36,7 @@ namespace SpentZ
         {
             DateTime previousMonth = month;
             string previousPage = MonthContext(currentPage);
-            string destination = page == "Closures" ? "Summary" : page;
+            string destination = page == "Closures" || page == "Account" ? "Summary" : page == "ArchivedGoals" ? "Goals" : page;
             if (previousPage != destination)
             {
                 pageMonths[previousPage] = month;
@@ -49,7 +49,8 @@ namespace SpentZ
 
         private string MonthContext(string page)
         {
-            if (page == "Closures") return "Summary";
+            if (page == "Closures" || page == "Account") return "Summary";
+            if (page == "ArchivedGoals") return "Goals";
             return page == "Bills" && showIncomePlans ? "Income" : page;
         }
 
@@ -61,7 +62,12 @@ namespace SpentZ
                 case "Help":
                     return "Settings";
                 case "Closures":
+                case "Account":
                     return "Summary";
+                case "Goals":
+                    return "Reserves";
+                case "ArchivedGoals":
+                    return "Goals";
                 case "Bills":
                     return IsBillHistory ? "Bills" : showIncomePlans ? "Income" : null;
                 default:

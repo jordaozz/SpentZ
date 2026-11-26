@@ -19,6 +19,17 @@
         <TextBlock Text="{Binding SummaryLabel}" Foreground="{DynamicResource Muted}"/>
       </DockPanel>
     </DataTemplate>
+    <DataTemplate x:Key="AccountBillLine">
+      <DockPanel Margin="0,2,0,7">
+        <TextBlock DockPanel.Dock="Right" Text="{Binding AmountDisplay}" FontWeight="SemiBold" Margin="10,0,0,0"/>
+        <StackPanel>
+          <TextBlock Text="{Binding Description}" FontWeight="SemiBold"/>
+          <TextBlock Foreground="{DynamicResource Muted}" FontSize="12">
+            <Run Text="{Binding DueDisplay, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Status, Mode=OneWay}"/>
+          </TextBlock>
+        </StackPanel>
+      </DockPanel>
+    </DataTemplate>
     <Style x:Key="VisibleFocus" TargetType="Control">
       <Setter Property="Template">
         <Setter.Value>
@@ -202,6 +213,25 @@
       <Setter Property="MinHeight" Value="26"/>
       <Setter Property="Margin" Value="0,0,6,4"/>
     </Style>
+    <Style x:Key="ActionIcon" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Focusable" Value="False"/>
+    </Style>
+    <DataTemplate x:Key="EditWithIcon">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="&#xE70F;" Style="{StaticResource ActionIcon}" Margin="0,0,6,0"/>
+        <TextBlock Text="{Binding}"/>
+      </StackPanel>
+    </DataTemplate>
+    <DataTemplate x:Key="SettingsWithIcon">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="&#xE713;" Style="{StaticResource ActionIcon}" Margin="0,0,7,0"/>
+        <TextBlock Text="{Binding}"/>
+      </StackPanel>
+    </DataTemplate>
     <Style x:Key="GuideTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
       <Setter Property="FontSize" Value="17"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -251,7 +281,8 @@
           <TextBlock Text="Dados neste computador" Foreground="{DynamicResource NavText}" FontSize="12"/>
         </StackPanel>
         <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,12">
-          <Button x:Name="SettingsNav" Content="Configurações" Style="{StaticResource Nav}" Margin="0,0,0,5"/>
+          <Button x:Name="SettingsNav" Content="Configurações" ContentTemplate="{StaticResource SettingsWithIcon}"
+                  AutomationProperties.Name="Configurações" Style="{StaticResource Nav}" Margin="0,0,0,5"/>
           <Button x:Name="ThemeToggle" Content="Modo noturno" Style="{StaticResource Nav}" Margin="0"
                   ToolTip="Alternar entre modo claro e noturno"/>
         </StackPanel>
@@ -301,9 +332,15 @@
             <StackPanel>
               <DockPanel>
                 <Button x:Name="Send" Content="Registrar" DockPanel.Dock="Right" Background="{DynamicResource Accent}" Foreground="White" Margin="10,0,0,0"/>
-                <TextBox x:Name="ChatInput" BorderBrush="{DynamicResource InputOutline}" BorderThickness="1" Padding="10,7"
-                         VerticalContentAlignment="Center" MaxLength="240" AutomationProperties.Name="Mensagem com valor e descrição do lançamento"/>
+                <RichTextBox x:Name="ChatInput" Background="{DynamicResource Surface}" Foreground="{DynamicResource Ink}"
+                             BorderBrush="{DynamicResource InputOutline}" BorderThickness="1" Padding="10,7" MaxHeight="88"
+                             VerticalScrollBarVisibility="Auto" AcceptsReturn="False" AcceptsTab="False"
+                             AutomationProperties.Name="Mensagem com valor e descrição do lançamento">
+                  <FlowDocument><Paragraph Margin="0"/></FlowDocument>
+                </RichTextBox>
               </DockPanel>
+              <TextBlock x:Name="ChatIntentPreview" Visibility="Collapsed" Margin="0,5,0,0"
+                         AutomationProperties.LiveSetting="Polite" FontWeight="SemiBold"/>
               <WrapPanel Margin="0,9,0,0">
                 <TextBlock Text="Exemplos" FontSize="12" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,9,4"/>
                 <Button x:Name="ExampleMeal" Content="42,90 almoço" Style="{StaticResource Example}" ToolTip="Preencher a mensagem"/>
@@ -325,6 +362,7 @@
       <ScrollViewer x:Name="SummaryPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
         <StackPanel>
           <WrapPanel Margin="0,0,0,8">
+            <Button x:Name="OpenAccount" Content="Acompanhar conta" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,8,4"/>
             <Button x:Name="OpenClosures" Content="Fechamento" Margin="0,0,8,4"/>
             <Button x:Name="AdjustBalance" Content="Ajustar saldo" Margin="0,0,8,4"/>
             <Button x:Name="OpenNextBills" Content="Contas do próximo mês" Margin="0,0,0,4"/>
@@ -420,6 +458,84 @@
                 <StackPanel x:Name="Categories"/>
               </StackPanel>
             </Border>
+          </Grid>
+        </StackPanel>
+      </ScrollViewer>
+      <ScrollViewer x:Name="AccountPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <Border Style="{StaticResource Card}" Padding="16,13" Margin="0,0,0,12">
+            <StackPanel>
+              <TextBlock x:Name="AccountDate" Foreground="{DynamicResource Muted}" FontSize="12"/>
+              <TextBlock x:Name="AccountAfterLabel" FontWeight="SemiBold" Margin="0,7,0,0"/>
+              <TextBlock x:Name="AccountAfter" FontSize="26" FontWeight="Bold" Margin="0,2,0,0"/>
+              <TextBlock x:Name="AccountStatus" Foreground="{DynamicResource Muted}" Margin="0,2,0,0"/>
+              <UniformGrid Columns="2" Margin="0,12,0,8">
+                <StackPanel Margin="0,0,12,0">
+                  <TextBlock x:Name="AccountCashLabel" Foreground="{DynamicResource Muted}"/>
+                  <TextBlock x:Name="AccountCash" FontSize="17" FontWeight="SemiBold"/>
+                </StackPanel>
+                <StackPanel>
+                  <TextBlock Text="Contas pendentes até o fim do mês" Foreground="{DynamicResource Muted}"/>
+                  <TextBlock x:Name="AccountCommitted" FontSize="17" FontWeight="SemiBold"/>
+                </StackPanel>
+              </UniformGrid>
+              <TextBlock Text="A conta considera os registros do SpentZ. Cofrinho e ganhos ainda previstos ficam fora desse saldo." Foreground="{DynamicResource Muted}" FontSize="12"/>
+              <Button x:Name="AccountOpening" Content="Definir saldo inicial" Style="{StaticResource Example}" HorizontalAlignment="Left" Margin="0,7,0,0"/>
+              <Expander Header="Simular uma compra" Margin="0,9,0,0">
+                <StackPanel Margin="0,5,0,0">
+                  <Label Content="Valor da compra (R$)" Target="{Binding ElementName=AccountPurchase}" Padding="0,0,0,4"/>
+                  <TextBox x:Name="AccountPurchase" Padding="7,4" MaxLength="16" Width="140" HorizontalAlignment="Left"/>
+                  <TextBlock x:Name="AccountSimulation" Foreground="{DynamicResource Muted}" Margin="0,5,0,0" AutomationProperties.LiveSetting="Polite"/>
+                </StackPanel>
+              </Expander>
+            </StackPanel>
+          </Border>
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,6,0">
+              <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
+                <StackPanel>
+                  <TextBlock Text="Movimento do mês" Style="{StaticResource GuideTitle}"/>
+                  <TextBlock Text="Gastos registrados" Foreground="{DynamicResource Muted}"/>
+                  <TextBlock x:Name="AccountExpenses" Foreground="{DynamicResource ExpenseInk}" FontWeight="SemiBold"/>
+                  <TextBlock Text="Entradas registradas" Foreground="{DynamicResource Muted}" Margin="0,7,0,0"/>
+                  <TextBlock x:Name="AccountReceived" Foreground="{DynamicResource IncomeInk}" FontWeight="SemiBold"/>
+                  <TextBlock Text="Ganhos previstos em aberto" Foreground="{DynamicResource Muted}" Margin="0,7,0,0"/>
+                  <TextBlock x:Name="AccountExpected" FontWeight="SemiBold"/>
+                  <WrapPanel Margin="0,8,0,0">
+                    <Button x:Name="AccountHistory" Content="Lançamentos" Style="{StaticResource Example}"/>
+                    <Button x:Name="AccountIncome" Content="Ganhos" Style="{StaticResource Example}"/>
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
+                <StackPanel>
+                  <TextBlock Text="Cofrinho" Style="{StaticResource GuideTitle}"/>
+                  <TextBlock x:Name="AccountSaved" FontWeight="Bold" Margin="0,0,0,6"/>
+                  <ItemsControl x:Name="AccountReserveRows" ItemTemplate="{StaticResource ReservePlaceLine}"/>
+                  <TextBlock x:Name="AccountReserveMore" Text="Veja os demais locais no Cofrinho." Foreground="{DynamicResource Muted}" FontSize="12"/>
+                  <Button x:Name="AccountReserves" Content="Ver Cofrinho" Style="{StaticResource Example}" HorizontalAlignment="Left" Margin="0,7,0,0"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="6,0,0,0">
+              <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
+                <StackPanel>
+                  <TextBlock Text="O que falta pagar" Style="{StaticResource GuideTitle}"/>
+                  <TextBlock x:Name="AccountOverdue" Foreground="{DynamicResource Muted}" Margin="0,0,0,7"/>
+                  <ItemsControl x:Name="AccountBillRows" ItemTemplate="{StaticResource AccountBillLine}"/>
+                  <Button x:Name="AccountBills" Content="Ver todas as pendências" Style="{StaticResource Example}" HorizontalAlignment="Left" Margin="0,4,0,0"/>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,12">
+                <StackPanel>
+                  <TextBlock Text="Assinaturas" Style="{StaticResource GuideTitle}"/>
+                  <TextBlock x:Name="AccountSubscriptionCount" Foreground="{DynamicResource Muted}" Margin="0,0,0,7"/>
+                  <ItemsControl x:Name="AccountSubscriptionRows" ItemTemplate="{StaticResource AccountBillLine}"/>
+                  <Button x:Name="AccountPlans" Content="Ver planos ativos" Style="{StaticResource Example}" HorizontalAlignment="Left" Margin="0,4,0,0"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
           </Grid>
         </StackPanel>
       </ScrollViewer>
@@ -520,7 +636,10 @@
             <TextBlock x:Name="ReserveTotal" FontSize="25" FontWeight="Bold" Margin="0,2,0,5"/>
             <TextBlock x:Name="ReserveActivity" Foreground="{DynamicResource Muted}"/>
             <WrapPanel Margin="0,9,0,0">
-              <Button x:Name="ReserveMove" Content="Depositar ou sacar" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,7,4"/>
+              <Button x:Name="ReserveMove" Content="Guardar dinheiro" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,7,4"/>
+              <Button x:Name="ReserveWithdraw" Content="Sacar" Margin="0,0,7,4"/>
+              <Button x:Name="ReserveStarting" Content="Já tinha guardado" Margin="0,0,7,4"/>
+              <Button x:Name="OpenGoals" Content="Ver metas" Margin="0,0,7,4"/>
             </WrapPanel>
           </StackPanel>
         </Border>
@@ -541,7 +660,7 @@
             <DockPanel>
               <TextBlock DockPanel.Dock="Top" Style="{StaticResource GuideTitle}" Text="Movimentações do mês" Margin="0,0,0,8"/>
               <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                <Button x:Name="ReserveEdit" Content="Editar" IsEnabled="False" Margin="0,0,6,4"/>
+                <Button x:Name="ReserveEdit" Content="Editar" ContentTemplate="{StaticResource EditWithIcon}" IsEnabled="False" Margin="0,0,6,4"/>
                 <Button x:Name="ReserveRemove" Content="Remover movimentação" Margin="0,0,0,4"/>
               </WrapPanel>
               <DataGrid x:Name="ReserveGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
@@ -570,6 +689,17 @@
           </Border>
         </Grid>
       </Grid>
+      <ScrollViewer x:Name="GoalsPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <WrapPanel x:Name="GoalPageActions" Margin="0,0,0,12">
+            <Button x:Name="CreateGoal" Content="Criar meta" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,7,4"/>
+            <Button x:Name="GoalDeposit" Content="Guardar no Cofrinho" Margin="0,0,7,4"/>
+            <Button x:Name="GoalArchiveList" Content="Ver arquivadas" Margin="0,0,7,4"/>
+          </WrapPanel>
+          <TextBlock x:Name="GoalStatus" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+          <StackPanel x:Name="GoalCards"/>
+        </StackPanel>
+      </ScrollViewer>
       <Grid x:Name="IncomePage" Grid.Row="2" Visibility="Collapsed">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <Grid Margin="0,0,0,16">
@@ -604,7 +734,7 @@
             <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,12">
               <Button x:Name="IncomeAdd" Content="Adicionar ganho" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,8,0"/>
               <Button x:Name="IncomeSchedules" Content="Ganhos fixos" Margin="0,0,8,0"/>
-              <Button x:Name="IncomeEdit" Content="Editar" Margin="0,0,8,0"/>
+              <Button x:Name="IncomeEdit" Content="Editar" ContentTemplate="{StaticResource EditWithIcon}" Margin="0,0,8,0"/>
               <Button x:Name="IncomeDelete" Content="Excluir" Background="{DynamicResource DangerSurface}" Foreground="{DynamicResource DangerText}"/>
             </WrapPanel>
             <TextBlock x:Name="IncomeStatus" DockPanel.Dock="Top" Foreground="{DynamicResource Muted}" FontSize="12" Margin="2,0,0,9"/>
@@ -626,27 +756,36 @@
       </Grid>
       <Border x:Name="HistoryPage" Grid.Row="2" Visibility="Collapsed" Style="{StaticResource Card}" Padding="14">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <StackPanel Margin="0,0,10,0">
+          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
               <Label Content="Buscar descrição" Target="{Binding ElementName=HistorySearch}" Padding="0,0,0,5" Foreground="{DynamicResource Muted}"/>
-              <TextBox x:Name="HistorySearch" Padding="8,6" MaxLength="240" BorderBrush="{DynamicResource InputOutline}" MinHeight="32"/>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Margin="0,0,10,0">
+              <Grid>
+                <TextBox x:Name="HistorySearch" Padding="30,6,8,6" MaxLength="240" BorderBrush="{DynamicResource InputOutline}" MinHeight="32"/>
+                <TextBlock Text="&#xE721;" Style="{StaticResource ActionIcon}" Foreground="{DynamicResource Muted}"
+                           HorizontalAlignment="Left" Margin="10,0,0,0" IsHitTestVisible="False"/>
+              </Grid>
+          </StackPanel>
+          <Expander DockPanel.Dock="Top" Header="Filtros" Margin="0,0,0,10">
+            <WrapPanel Margin="0,5,0,0">
+            <StackPanel Margin="0,0,10,0">
               <Label Content="Tipo" Target="{Binding ElementName=HistoryType}" Padding="0,0,0,5" Foreground="{DynamicResource Muted}"/>
               <ComboBox x:Name="HistoryType" MinWidth="92" MinHeight="32" Padding="6,4"/>
             </StackPanel>
-            <StackPanel Grid.Column="2">
+            <StackPanel>
               <Label Content="Categoria" Target="{Binding ElementName=HistoryCategory}" Padding="0,0,0,5" Foreground="{DynamicResource Muted}"/>
               <ComboBox x:Name="HistoryCategory" MinWidth="151" MinHeight="32" Padding="6,4"/>
             </StackPanel>
-          </Grid>
+            </WrapPanel>
+          </Expander>
           <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-            <Button x:Name="ExpenseAdd" Content="Adicionar gasto" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,8,0"/>
-            <Button x:Name="Edit" Content="Editar" Margin="0,0,8,0"/>
+            <Button x:Name="ExpenseAdd" Content="Adicionar gasto" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,8,4"/>
+            <Button x:Name="HistoryAddIncome" Content="Adicionar ganho" Margin="0,0,8,4"/>
+            <Button x:Name="Export" Content="Exportar mês" ToolTip="O CSV contém os dados financeiros do mês em texto legível." Margin="0,0,0,4"/>
+          </WrapPanel>
+          <WrapPanel x:Name="HistoryRowActions" DockPanel.Dock="Bottom" Visibility="Collapsed" Margin="0,8,0,0">
+            <Button x:Name="Edit" Content="Editar" ContentTemplate="{StaticResource EditWithIcon}" Margin="0,0,8,0"/>
+            <Button x:Name="HistorySubscription" Content="Transformar em assinatura" Visibility="Collapsed" Margin="0,0,8,0"/>
             <Button x:Name="HistoryRefund" Content="Registrar estorno" IsEnabled="False" Margin="0,0,8,0"/>
             <Button x:Name="Delete" Content="Excluir" Background="{DynamicResource DangerSurface}" Foreground="{DynamicResource DangerText}" Margin="0,0,8,0"/>
-            <Button x:Name="Export" Content="Exportar mês" ToolTip="Salvar todos os lançamentos do mês em CSV"/>
           </WrapPanel>
           <TextBlock x:Name="HistoryStatus" DockPanel.Dock="Top" Foreground="{DynamicResource Muted}" FontSize="12" Margin="2,0,0,9"/>
           <DataGrid x:Name="HistoryGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
@@ -723,12 +862,12 @@
               <Button x:Name="BillPay" Content="Marcar como paga" Background="{DynamicResource Accent}" Foreground="White" Margin="0,0,6,4"/>
               <Button x:Name="BillUnlink" Content="Desvincular" Margin="0,0,6,4" Visibility="Collapsed"
                       ToolTip="Voltar a previsão para pendente, mantendo o lançamento registrado"/>
-              <Button x:Name="BillEdit" Content="Editar" Margin="0,0,6,4" ToolTip="Editar plano"/>
+              <Button x:Name="BillEdit" Content="Editar plano" ContentTemplate="{StaticResource EditWithIcon}"
+                      Visibility="Collapsed" Margin="0,0,6,4" ToolTip="Corrigir dados e próximos vencimentos"/>
               <Button x:Name="BillSchedule" Content="Ver cronograma" Margin="0,0,6,4"/>
               <Button x:Name="BillCancel" Content="Cancelar renovação" Margin="0,0,6,4"
                       ToolTip="Retirar futuras cobranças de uma assinatura que você cancelou"/>
               <Button x:Name="BillWaive" Content="Dispensar cobrança" Margin="0,0,6,4" Visibility="Collapsed"/>
-              <Button x:Name="BillRevise" Content="Alterar próximos vencimentos" Margin="0,0,6,4" Visibility="Collapsed"/>
               <Button x:Name="BillArchive" Content="Arquivar" Margin="0,0,6,4" ToolTip="Arquivar todas as cobranças pendentes deste plano"/>
             </WrapPanel>
             <TextBlock x:Name="BillCancelStatus" DockPanel.Dock="Bottom" Visibility="Collapsed"
@@ -796,30 +935,28 @@
             <StackPanel>
               <TextBlock Style="{StaticResource GuideTitle}" Text="Antes de formatar ou trocar de computador"/>
               <TextBlock Style="{StaticResource GuideBody}" Margin="0,2,0,5">
-                <Run FontWeight="Bold">1.</Run> Clique em <Run FontWeight="SemiBold">Salvar backup</Run> e escolha onde criar a pasta.
+                <Run FontWeight="Bold">1.</Run> Clique em <Run FontWeight="SemiBold">Salvar backup protegido</Run> e escolha onde guardar o arquivo.
               </TextBlock>
               <TextBlock Style="{StaticResource GuideBody}" Margin="0,0,0,5">
-                <Run FontWeight="Bold">2.</Run> O SpentZ cria uma pasta com o aplicativo e uma cópia dos seus dados.
-                Copie a <Run FontWeight="SemiBold">pasta inteira</Run> para um pendrive, HD externo ou nuvem. Você também pode salvá-la diretamente lá.
+                <Run FontWeight="Bold">2.</Run> Crie a senha do backup e guarde-a separadamente. O arquivo .spentz contém seus dados.
               </TextBlock>
               <TextBlock Style="{StaticResource GuideBody}">
-                <Run FontWeight="Bold">3.</Run> Confira se a pasta abre no destino antes de formatar. Se usar a nuvem, espere a sincronização terminar.
+                <Run FontWeight="Bold">3.</Run> Guarde o arquivo em um pendrive, HD externo ou nuvem. Confira se ele está no destino.
               </TextBlock>
-              <Button x:Name="BackupSave" Content="Salvar backup" HorizontalAlignment="Left" Margin="0,12,0,0" Background="{DynamicResource Accent}" Foreground="White"/>
+              <Button x:Name="BackupSave" Content="Salvar backup protegido" HorizontalAlignment="Left" Margin="0,12,0,0" Background="{DynamicResource Accent}" Foreground="White"/>
             </StackPanel>
           </Border>
           <Border Style="{StaticResource Card}" Padding="16">
             <StackPanel>
               <TextBlock Style="{StaticResource GuideTitle}" Text="Para recuperar seus dados"/>
               <TextBlock Style="{StaticResource GuideBody}" Margin="0,2,0,5">
-                <Run FontWeight="Bold">1.</Run> Copie a pasta de backup do pendrive ou da nuvem de volta para o computador. Abra o <Run FontWeight="SemiBold">SpentZ.exe</Run> que está dentro dela.
+                <Run FontWeight="Bold">1.</Run> Abra a versão atual do SpentZ no computador onde quer recuperar os dados.
               </TextBlock>
               <TextBlock Style="{StaticResource GuideBody}" Margin="0,0,0,5">
-                <Run FontWeight="Bold">2.</Run> Vá em <Run FontWeight="SemiBold">Configurações → Backup e restauração</Run> e clique em <Run FontWeight="SemiBold">Restaurar backup</Run>.
+                <Run FontWeight="Bold">2.</Run> Clique em <Run FontWeight="SemiBold">Restaurar backup</Run> e selecione o arquivo .spentz. Para uma cópia antiga, selecione o arquivo .sqlite3 dentro da pasta.
               </TextBlock>
               <TextBlock Style="{StaticResource GuideBody}">
-                <Run FontWeight="Bold">3.</Run> Confira a pasta sugerida ou use <Run FontWeight="SemiBold">Procurar pasta</Run>, se ela foi movida ou renomeada.
-                Ao confirmar, o backup substitui os dados atuais do SpentZ.
+                <Run FontWeight="Bold">3.</Run> Informe a senha e confira o resumo antes de confirmar. O SpentZ cria uma cópia protegida dos registros atuais.
               </TextBlock>
               <Button x:Name="BackupRestore" Content="Restaurar backup" HorizontalAlignment="Left" Margin="0,12,0,0"/>
             </StackPanel>
@@ -883,8 +1020,14 @@
             <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
               <StackPanel>
                 <TextBlock Style="{StaticResource GuideTitle}" Text="Planejar contas futuras"/>
-                <TextBlock Style="{StaticResource GuideBody}" Text="No chat, clique em Gasto fixo e escolha conta mensal, assinatura, compra parcelada ou conta avulsa. Em Contas futuras, consulte os vencimentos. Marcar como paga registra a despesa pela data do pagamento ou vincula um lançamento existente."/>
+                <TextBlock Style="{StaticResource GuideBody}" Text="Digite 25 assinatura do Discord Nitro no Chat e confirme a frequência e a primeira data. Para contas e parcelas, use Gasto fixo. Em Contas futuras, selecione um plano e clique no lápis para corrigir os próximos vencimentos."/>
                 <TextBlock Style="{StaticResource GuideBody}" Text="Depois de cancelar com o serviço, use Cancelar renovação. As próximas renovações saem da agenda. As cobranças anteriores em aberto continuam visíveis até você pagar ou dispensar."/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">
+              <StackPanel>
+                <TextBlock Style="{StaticResource GuideTitle}" Text="Acompanhar a conta de hoje"/>
+                <TextBlock Style="{StaticResource GuideBody}" Text="No Resumo mensal, clique em Acompanhar conta. Veja quanto sobra depois das contas pendentes até o fim do mês, sem contar o Cofrinho e os ganhos que ainda não entraram. Use Simular uma compra para conferir o impacto de um novo gasto."/>
               </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}" Margin="6,0,6,12" Padding="16">

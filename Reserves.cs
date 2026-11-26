@@ -23,9 +23,10 @@ namespace SpentZ
         public DateTime Date { get; set; }
         public long Cents { get; internal set; }
         internal bool Withdraw { get; set; }
+        internal bool Initial { get; set; }
         public string DateDisplay { get { return Date.ToString("dd/MM/yyyy", LedgerEntry.Brazilian); } }
         public string DayDisplay { get { return Date.ToString("dd/MM", LedgerEntry.Brazilian); } }
-        public string Kind { get { return Withdraw ? "Resgate" : "Guardado"; } }
+        public string Kind { get { return Initial ? "Já guardado" : Withdraw ? "Resgate" : "Guardado"; } }
         public string SummaryLabel { get { return DayDisplay + "  ·  " + Kind + "  ·  " + Place; } }
         public string AmountDisplay { get { return LedgerEntry.Money(Cents); } }
     }
@@ -42,6 +43,8 @@ namespace SpentZ
                 direction INTEGER NOT NULL CHECK(direction IN (-1, 1)))");
             Execute("CREATE INDEX IF NOT EXISTS reserve_moves_date ON reserve_moves(date)");
             Execute("CREATE INDEX IF NOT EXISTS reserve_moves_place_date ON reserve_moves(place_id, date)");
+            if (!HasColumn("reserve_moves", "initial_reserve"))
+                Execute("ALTER TABLE reserve_moves ADD COLUMN initial_reserve INTEGER NOT NULL DEFAULT 0 CHECK(initial_reserve IN (0, 1))");
         }
 
         internal List<string> ReservePlaces()
@@ -59,8 +62,8 @@ namespace SpentZ
             string end = IsoDate(through.HasValue ? through.Value.Date.AddDays(1) : first.AddMonths(1));
             List<ReserveBalance> rows = new List<ReserveBalance>();
             using (Statement query = Prepare(@"SELECT place.name,
-                SUM(CASE WHEN move.date < ? THEN move.cents * move.direction ELSE 0 END),
-                SUM(CASE WHEN move.date >= ? AND move.direction = 1 THEN move.cents ELSE 0 END),
+                SUM(CASE WHEN move.date < ? OR move.initial_reserve = 1 THEN move.cents * move.direction ELSE 0 END),
+                SUM(CASE WHEN move.date >= ? AND move.direction = 1 AND move.initial_reserve = 0 THEN move.cents ELSE 0 END),
                 SUM(CASE WHEN move.date >= ? AND move.direction = -1 THEN move.cents ELSE 0 END)
                 FROM reserve_moves move JOIN reserve_places place ON move.place_id = place.id
                 WHERE move.date < ? GROUP BY place.id ORDER BY place.name COLLATE NOCASE",
@@ -81,7 +84,7 @@ namespace SpentZ
         {
             DateTime first = new DateTime(month.Year, month.Month, 1);
             List<ReserveMovement> rows = new List<ReserveMovement>();
-            using (Statement query = Prepare(@"SELECT move.id, move.place_id, place.name, move.date, move.cents, move.direction
+            using (Statement query = Prepare(@"SELECT move.id, move.place_id, place.name, move.date, move.cents, move.direction, move.initial_reserve
                 FROM reserve_moves move JOIN reserve_places place ON place.id = move.place_id
                 WHERE move.date >= ? AND move.date < ? ORDER BY move.date DESC, move.id DESC",
                 new object[] { IsoDate(first), IsoDate(first.AddMonths(1)) }))
@@ -90,16 +93,18 @@ namespace SpentZ
                     rows.Add(new ReserveMovement {
                         Id = query.Integer(0), PlaceId = query.Integer(1), Place = query.Text(2),
                         Date = DateTime.ParseExact(query.Text(3), "yyyy-MM-dd", CultureInfo.InvariantCulture),
-                        Cents = query.Integer(4), Withdraw = query.Integer(5) == -1
+                        Cents = query.Integer(4), Withdraw = query.Integer(5) == -1, Initial = query.Integer(6) == 1
                     });
             }
             return rows;
         }
 
-        internal void AddReserveMovement(string name, DateTime date, long cents, bool withdraw, ReserveMovement previous = null)
+        internal void AddReserveMovement(string name, DateTime date, long cents, bool withdraw, ReserveMovement previous = null, bool initial = false)
         {
             string place = name.Trim();
             if (place.Length == 0 || cents <= 0) throw new IOException("Informe o local e um valor positivo.");
+            if (withdraw && (initial || (previous != null && previous.Initial)))
+                throw new IOException("Um saldo já guardado precisa ser registrado como entrada no Cofrinho.");
             Execute("BEGIN IMMEDIATE");
             try
             {
@@ -112,18 +117,24 @@ namespace SpentZ
                 }
                 long direction = withdraw ? -1L : 1L;
                 if (previous == null)
-                    Execute("INSERT INTO reserve_moves(place_id, date, cents, direction) VALUES (?, ?, ?, ?)",
-                        placeId, IsoDate(date), cents, direction);
+                    Execute("INSERT INTO reserve_moves(place_id, date, cents, direction, initial_reserve) VALUES (?, ?, ?, ?, ?)",
+                        placeId, IsoDate(date), cents, direction, initial ? 1L : 0L);
                 else
                 {
+                    if (IsGoalPurchase(previous.Id, false)) throw new IOException("Desfaça esta compra na página Metas para corrigir a movimentação.");
                     Execute(@"UPDATE reserve_moves SET place_id = ?, date = ?, cents = ?, direction = ?
                         WHERE id = ? AND place_id = ? AND date = ? AND cents = ? AND direction = ?",
                         placeId, IsoDate(date), cents, direction, previous.Id, previous.PlaceId, IsoDate(previous.Date),
                         previous.Cents, previous.Withdraw ? -1L : 1L);
                     if (sqlite3_changes(database) == 0) throw new IOException("A movimentação mudou. Selecione-a novamente.");
-                    if (previous.PlaceId != placeId) CheckReserveBalance(previous.PlaceId);
+                    if (previous.PlaceId != placeId)
+                    {
+                        CheckReserveBalance(previous.PlaceId);
+                        CheckGoalFunding(previous.PlaceId);
+                    }
                 }
                 CheckReserveBalance(placeId);
+                CheckGoalFunding(placeId);
                 Execute("COMMIT");
             }
             catch
@@ -138,10 +149,15 @@ namespace SpentZ
             Execute("BEGIN IMMEDIATE");
             try
             {
+                if (IsGoalPurchase(entry.Id, false)) throw new IOException("Desfaça esta compra na página Metas para remover a movimentação.");
                 Execute("DELETE FROM reserve_moves WHERE id = ? AND place_id = ? AND date = ? AND cents = ? AND direction = ?",
                     entry.Id, entry.PlaceId, IsoDate(entry.Date), entry.Cents, entry.Withdraw ? -1L : 1L);
                 bool removed = sqlite3_changes(database) != 0;
-                if (removed) CheckReserveBalance(entry.PlaceId);
+                if (removed)
+                {
+                    CheckReserveBalance(entry.PlaceId);
+                    CheckGoalFunding(entry.PlaceId);
+                }
                 Execute("COMMIT");
                 return removed;
             }
@@ -180,7 +196,11 @@ namespace SpentZ
                 }
             }
             using (Statement places = Prepare("SELECT id FROM reserve_places", new object[0]))
-                while (places.Step() == Row) CheckReserveBalance(places.Integer(0));
+                while (places.Step() == Row)
+                {
+                    CheckReserveBalance(places.Integer(0));
+                    CheckGoalFunding(places.Integer(0));
+                }
         }
     }
 }

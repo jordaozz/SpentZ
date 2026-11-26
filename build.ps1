@@ -17,6 +17,8 @@ $icon = Join-Path $PSScriptRoot 'assets\SpentZ.ico'
 $badge = Join-Path $PSScriptRoot 'assets\SpentZ.png'
 $sources = @(
     (Join-Path $PSScriptRoot 'Program.cs')
+    (Join-Path $PSScriptRoot 'AccountOverview.cs')
+    (Join-Path $PSScriptRoot 'ChatIntent.cs')
     (Join-Path $PSScriptRoot 'Ledger.cs')
     (Join-Path $PSScriptRoot 'Budget.cs')
     (Join-Path $PSScriptRoot 'BudgetUi.cs')
@@ -27,10 +29,13 @@ $sources = @(
     (Join-Path $PSScriptRoot 'Closures.cs')
     (Join-Path $PSScriptRoot 'Reserves.cs')
     (Join-Path $PSScriptRoot 'ReservesUi.cs')
+    (Join-Path $PSScriptRoot 'Goals.cs')
+    (Join-Path $PSScriptRoot 'GoalsUi.cs')
     (Join-Path $PSScriptRoot 'CalendarClock.cs')
     (Join-Path $PSScriptRoot 'Navigation.cs')
     (Join-Path $PSScriptRoot 'Reconciliation.cs')
     (Join-Path $PSScriptRoot 'BackupUi.cs')
+    (Join-Path $PSScriptRoot 'PortableBackup.cs')
     (Join-Path $PSScriptRoot 'Appearance.cs')
 )
 $references = @(

@@ -16,7 +16,13 @@ namespace SpentZ
             Click("ReservesNav", delegate { Navigate("Reserves"); });
             Click("QuickCofrinho", delegate { EnterReserveMovement(); });
             Click("SummaryCofrinho", delegate { EnterReserveMovement(); });
-            Click("ReserveMove", delegate { EnterReserveMovement(); });
+            Click("ReserveMove", delegate { EnterReserveMovement(null, false); });
+            Click("ReserveWithdraw", delegate { EnterReserveMovement(null, true); });
+            Click("ReserveStarting", delegate { EnterReserveMovement(null, false, true); });
+            Click("OpenGoals", delegate { Navigate("Goals"); });
+            Click("CreateGoal", delegate { EditGoal(null); });
+            Click("GoalArchiveList", delegate { Navigate("ArchivedGoals"); });
+            Click("GoalDeposit", delegate { EnterReserveMovement(null, false); });
             Click("ReserveEdit", delegate { EnterReserveMovement(Get<DataGrid>("ReserveGrid").SelectedItem as ReserveMovement); });
             Click("ReserveRemove", RemoveReserveMovement);
             DataGrid grid = Get<DataGrid>("ReserveGrid");
@@ -77,10 +83,11 @@ namespace SpentZ
             Get<Button>("ReserveEdit").IsEnabled = false;
         }
 
-        private void EnterReserveMovement(ReserveMovement edit = null)
+        private void EnterReserveMovement(ReserveMovement edit = null, bool? initialWithdrawal = null, bool alreadySaved = false)
         {
             List<string> names = store.ReservePlaces();
-            Window dialog = CreateDialog(edit == null ? "Cofrinho" : "Editar movimentação", 420);
+            if (edit != null && edit.Initial) initialWithdrawal = false;
+            Window dialog = CreateDialog(edit != null ? "Editar movimentação" : alreadySaved ? "Registrar dinheiro já guardado" : "Cofrinho", 420);
             StackPanel fields = new StackPanel { Margin = new Thickness(20) };
             fields.Children.Add(new TextBlock {
                 Text = "Total no cofrinho hoje", Foreground = Tone("Muted")
@@ -90,9 +97,9 @@ namespace SpentZ
                 FontSize = 22, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 2, 0, 12)
             });
             ComboBox operation = new ComboBox {
-                ItemsSource = new[] { "Depositar", "Sacar" }, SelectedIndex = edit != null && edit.Withdraw ? 1 : 0
+                ItemsSource = new[] { "Depositar", "Sacar" }, SelectedIndex = (initialWithdrawal ?? (edit != null && edit.Withdraw)) ? 1 : 0
             };
-            AddField(fields, "O que você quer fazer?", operation);
+            if (!initialWithdrawal.HasValue) AddField(fields, "O que você quer fazer?", operation);
             ComboBox places = new ComboBox();
             Label placeLabel = AddField(fields, "Local", places);
             TextBlock placeBalance = new TextBlock { Foreground = Tone("AccentText"), Margin = new Thickness(0, 0, 0, 8) };
@@ -109,6 +116,10 @@ namespace SpentZ
                 MaxLength = 10, Padding = new Thickness(7)
             };
             AddField(fields, "Valor (R$)", amount);
+            if (alreadySaved) fields.Children.Add(new TextBlock {
+                Text = "Use para dinheiro que já estava separado antes de você começar. O saldo disponível permanece igual.",
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10)
+            });
             AddField(fields, "Data da movimentação (dia/mês/ano)", date);
             TextBlock feedback = new TextBlock { Foreground = Tone("DangerText"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
             fields.Children.Add(feedback);
@@ -137,7 +148,7 @@ namespace SpentZ
                 string previous = places.SelectedItem as string;
                 bool withdraw = withdrawing();
                 placeLabel.Content = withdraw ? "De onde sai o dinheiro?" : "Onde vai guardar?";
-                save.Content = edit != null ? "Salvar alteração" : withdraw ? "Sacar" : "Depositar";
+                save.Content = edit != null ? "Salvar alteração" : alreadySaved ? "Registrar saldo guardado" : withdraw ? "Sacar" : "Depositar";
                 feedback.Text = "";
                 places.ItemsSource = withdraw ? names : names.Concat(new[] { "Cadastrar outro local…" }).ToList();
                 places.SelectedIndex = Math.Max(0, names.IndexOf(previous));
@@ -148,7 +159,7 @@ namespace SpentZ
             operation.SelectionChanged += delegate { updateOperation(); };
             updateOperation();
             if (edit != null) places.SelectedItem = edit.Place;
-            dialog.Loaded += delegate { operation.Focus(); };
+            dialog.Loaded += delegate { if (initialWithdrawal.HasValue) places.Focus(); else operation.Focus(); };
             string result = "";
             save.Click += delegate
             {
@@ -173,7 +184,7 @@ namespace SpentZ
                 }
                 try
                 {
-                    store.AddReserveMovement(destination, on, cents, withdraw, edit);
+                    store.AddReserveMovement(destination, on, cents, withdraw, edit, alreadySaved);
                     if (currentPage == "Reserves" || currentPage == "Summary") month = MonthStart(on);
                     result = LedgerEntry.Money(cents) + (withdraw ? " resgatados de " : " guardados em ") + destination + ".";
                     dialog.DialogResult = true;
@@ -183,6 +194,7 @@ namespace SpentZ
             if (dialog.ShowDialog() != true) return;
             UpdateClosures();
             RefreshMonth();
+            if (currentPage == "Goals") RefreshGoals();
             if (currentPage == "Chat") AddBubble(AppName, result, false);
         }
 

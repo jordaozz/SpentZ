@@ -11,7 +11,7 @@ namespace SpentZ
     internal sealed partial class Program
     {
         private BillCalendar bills;
-        private enum AgendaMode { Current, Next, Overdue, Month, Pending, Plans, Canceled, Confirmed }
+        private enum AgendaMode { Current, Next, Overdue, Month, Pending, ThroughMonth, Plans, Canceled, Confirmed }
         private AgendaMode agendaMode;
         private bool showIncomePlans;
 
@@ -37,14 +37,13 @@ namespace SpentZ
             Click("BillAdd", delegate { AddPlan(showIncomePlans); });
             Click("QuickFixedExpense", delegate { AddPlan(false); });
             Click("QuickFixedIncome", delegate { AddPlan(true); });
-            Click("BillEdit", delegate { if (SelectedBill != null) EditBill(SelectedBill.Plan); });
+            Click("BillEdit", EditSelectedPlan);
             Click("BillSchedule", ShowPlanSchedule);
             Click("BillPay", ReconcileBill);
             Click("BillUnlink", UnlinkRecordedBill);
             Click("BillArchive", ArchiveBill);
             Click("BillCancel", CancelRenewal);
             Click("BillWaive", WaiveSelectedBill);
-            Click("BillRevise", ReviseSelectedPlan);
             DataGrid grid = Get<DataGrid>("BillGrid");
             grid.SelectionChanged += delegate { UpdateBillActions(); };
             grid.SizeChanged += delegate { SizeBillColumns(grid); };
@@ -147,6 +146,7 @@ namespace SpentZ
             Paint(forecast, TextBlock.ForegroundProperty, projected < 0 ? "DangerText" : "AccentText");
             DateTime next = new DateTime(today.Year, today.Month, 1).AddMonths(1);
             List<BillOccurrence> nextExpenses = bills.Month(next, today).Where(IsOpenPrediction).ToList();
+            if (currentPage == "Account") RefreshAccount();
             if (currentPage != "Bills") return;
 
             bool income = showIncomePlans;
@@ -205,10 +205,16 @@ namespace SpentZ
                     title = "Total dessas pendências";
                     detail = "Pendências até " + today.AddDays(reminderDays).ToString("dd/MM/yyyy") + ".";
                     break;
+                case AgendaMode.ThroughMonth:
+                    DateTime lastDay = next.AddDays(-1);
+                    rows = bills.Pending(today, (lastDay - today).Days);
+                    title = "Pendências até " + lastDay.ToString("dd/MM");
+                    detail = "Inclui contas vencidas de meses anteriores.";
+                    break;
                 case AgendaMode.Plans:
                     rows = bills.Plans(today, income);
                     title = "Planos ativos";
-                    detail = "Selecione um plano para ver o cronograma.";
+                    detail = "Selecione um plano para editar ou ver o cronograma.";
                     break;
                 case AgendaMode.Canceled:
                     rows = bills.Cancellations(today);
@@ -279,15 +285,14 @@ namespace SpentZ
             Get<Button>("BillPay").Visibility = canPay ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("BillPay").IsEnabled = canPay && bill != null && bill.IsPending;
             Get<Button>("BillWaive").Visibility = canPay && bill != null && bill.IsPending ? Visibility.Visible : Visibility.Collapsed;
-            Get<Button>("BillRevise").Visibility = active && agendaMode == AgendaMode.Plans &&
-                bills.NextRenewal(bill.Plan, Today).HasValue ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("BillSchedule").Visibility = bill == null && IsBillHistory ? Visibility.Collapsed : Visibility.Visible;
             Get<Button>("BillSchedule").IsEnabled = bill != null;
             Get<Button>("BillUnlink").Visibility = bill != null && bill.Payment != null && !bill.PlanRecord ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("BillUnlink").Content = bill != null && bill.Payment != null && bill.Payment.InOpeningBalance ?
                 "Reabrir ocorrência" : "Desvincular";
             Get<Button>("BillEdit").IsEnabled = active;
-            Get<Button>("BillEdit").Visibility = IsBillHistory ? Visibility.Collapsed : Visibility.Visible;
+            Get<Button>("BillEdit").Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+            if (active) Get<Button>("BillEdit").Content = bill.Plan.IsSubscription ? "Editar assinatura" : "Editar plano";
             Get<Button>("BillArchive").IsEnabled = active && (bill.Plan.IsIncome || !bill.Plan.IsSubscription);
             Get<Button>("BillArchive").Visibility = active && (bill.Plan.IsIncome || !bill.Plan.IsSubscription) ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("BillCancel").IsEnabled = active && bill.Plan.CanStop && bills.NextRenewal(bill.Plan, Today).HasValue;
@@ -319,40 +324,73 @@ namespace SpentZ
             ShowAgendaNotice("Ocorrência dispensada.");
         }
 
-        private void ReviseSelectedPlan()
+        private void EditSelectedPlan()
         {
             BillOccurrence row = SelectedBill;
+            if (row == null || !row.Plan.IsActive) return;
+            DateTime? cutoff = row.Plan.HasSettledOccurrences ? bills.NextEditableRenewal(row.Plan, Today) : null;
+            if (cutoff.HasValue) EditUpcomingBill(row.Plan, cutoff.Value);
+            else EditBill(row.Plan);
+        }
+
+        private void OpenActivePlan(BillPlan plan)
+        {
+            Navigate("Bills", delegate { agendaMode = AgendaMode.Plans; showIncomePlans = plan.IsIncome; });
+            var grid = Get<DataGrid>("BillGrid");
+            var row = grid.Items.Cast<BillOccurrence>().FirstOrDefault(item => item.Plan.Id == plan.Id);
             if (row == null) return;
-            DateTime? cutoff = bills.NextRenewal(row.Plan, Today);
-            if (!cutoff.HasValue) return;
-            Window dialog = CreateDialog("Alterar os próximos vencimentos", 430);
+            grid.SelectedItem = row;
+            grid.ScrollIntoView(row);
+        }
+
+        private void EditUpcomingBill(BillPlan plan, DateTime cutoff)
+        {
+            Window dialog = CreateDialog(plan.IsSubscription ? "Editar assinatura" : "Editar próximos vencimentos", 440);
             StackPanel fields = new StackPanel { Margin = new Thickness(20) };
-            fields.Children.Add(new TextBlock { Text = "O histórico e os vencimentos anteriores a " + ReportDate(cutoff.Value) +
+            fields.Children.Add(new TextBlock { Text = "O histórico e os vencimentos anteriores a " + ReportDate(cutoff) +
                 " permanecem como estão.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
-            TextBox date = new TextBox { Text = ReportDate(cutoff.Value), MaxLength = 10, Padding = new Thickness(7) };
-            TextBox price = new TextBox { Text = (row.Plan.Cents / 100m).ToString("0.00", LedgerEntry.Brazilian), Padding = new Thickness(7) };
+            TextBox description = new TextBox { Text = plan.Description, MaxLength = 120, Padding = new Thickness(7) };
+            AddField(fields, "Descrição", description);
+            ComboBox cycle = new ComboBox { ItemsSource = new[] { "Mensal", "Anual" }, SelectedIndex = plan.Kind == BillKind.Annual ? 1 : 0 };
+            bool editCycle = plan.IsSubscription && plan.Installments == 0;
+            if (editCycle) AddField(fields, "Frequência", cycle);
+            TextBox date = new TextBox { Text = ReportDate(cutoff), MaxLength = 10, Padding = new Thickness(7) };
+            TextBox price = new TextBox { Text = (plan.Cents / 100m).ToString("0.00", LedgerEntry.Brazilian), MaxLength = 16, Padding = new Thickness(7) };
             AddField(fields, "Próxima data (dia/mês/ano)", date);
             AddField(fields, "Novo valor (R$)", price);
+            ComboBox category = new ComboBox { ItemsSource = plan.IsIncome ? LedgerEntry.IncomeCategories : store.ExpenseCategories(), SelectedItem = plan.Category };
+            AddField(fields, "Categoria", category);
             TextBlock feedback = new TextBlock { Foreground = Tone("DangerText"), TextWrapping = TextWrapping.Wrap };
             fields.Children.Add(feedback);
             Button save = PrimaryDialogButton("Salvar alteração");
             fields.Children.Add(DialogActions(save));
-            dialog.Content = fields;
+            dialog.MaxHeight = SystemParameters.WorkArea.Height - 24;
+            dialog.Content = new ScrollViewer { Content = fields, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            BillPlan revised = null;
             save.Click += delegate
             {
                 DateTime next;
                 long cents;
-                if (!TryEntryDate(date.Text, out next) || !LedgerEntry.TryAmount(price.Text, out cents))
+                if (description.Text.Trim().Length == 0 || !TryEntryDate(date.Text, out next) || !LedgerEntry.TryAmount(price.Text, out cents))
                 {
-                    feedback.Text = "Informe a data e um valor positivo.";
+                    feedback.Text = "Informe a descrição, a data e um valor positivo.";
                     return;
                 }
-                try { store.RevisePlan(row.Plan, cutoff.Value, next, cents, Today); }
+                revised = new BillPlan { Description = description.Text.Trim(), Category = (string)category.SelectedItem ?? plan.Category,
+                    FirstDue = next, Cents = cents, Kind = editCycle ? (BillKind)cycle.SelectedIndex : plan.Kind };
+                if (revised.Description == plan.Description && revised.Category == plan.Category &&
+                    revised.Cents == plan.Cents && revised.FirstDue == cutoff && revised.Kind == plan.Kind)
+                {
+                    dialog.DialogResult = false;
+                    return;
+                }
+                try { store.RevisePlan(plan, cutoff, revised, Today); }
                 catch (System.IO.IOException error) { feedback.Text = error.Message; return; }
                 dialog.DialogResult = true;
             };
             if (dialog.ShowDialog() != true) return;
             ReloadBills();
+            OpenActivePlan(revised);
             ShowAgendaNotice("Próximos vencimentos atualizados.");
         }
 
@@ -442,21 +480,23 @@ namespace SpentZ
 
         private enum FixedExpenseType { MonthlyBill, MonthlySubscription, AnnualSubscription, AnnualMonthly, Installment, OneTime }
 
-        private void EditBill(BillPlan plan)
+        private bool EditBill(BillPlan plan, string chatNote = null, bool chatSubscription = false, LedgerEntry linked = null)
         {
             bool adding = plan.Id == 0;
-            Window dialog = CreateDialog(adding ? (plan.IsIncome ? "Novo ganho fixo" : "Novo gasto fixo") : "Editar plano", 420);
+            Window dialog = CreateDialog(chatSubscription ? "Cadastrar assinatura" :
+                adding ? (plan.IsIncome ? "Novo ganho fixo" : "Novo gasto fixo") :
+                plan.IsSubscription ? "Editar assinatura" : "Editar plano", 420);
             StackPanel fields = new StackPanel { Margin = new Thickness(20) };
             TextBox description = new TextBox { Text = plan.Description, MaxLength = 120, Padding = new Thickness(7) };
             TextBox amount = new TextBox {
-                Text = adding ? "" : (plan.Cents / 100m).ToString("0.00", LedgerEntry.Brazilian),
-                MaxLength = 16, Padding = new Thickness(7), IsEnabled = !plan.HasPayments
+                Text = adding && plan.Cents == 0 ? "" : (plan.Cents / 100m).ToString("0.00", LedgerEntry.Brazilian),
+                MaxLength = 16, Padding = new Thickness(7), IsEnabled = !plan.HasSettledOccurrences
             };
             TextBox due = new TextBox {
                 Text = plan.FirstDue.ToString("dd/MM/yyyy", LedgerEntry.Brazilian), MaxLength = 10,
-                Padding = new Thickness(7), IsEnabled = !plan.HasPayments && !plan.StopBefore.HasValue
+                Padding = new Thickness(7), IsEnabled = !plan.HasSettledOccurrences && !plan.StopBefore.HasValue
             };
-            bool canEditDates = !plan.HasPayments && !plan.StopBefore.HasValue;
+            bool canEditDates = !plan.HasSettledOccurrences && !plan.StopBefore.HasValue;
             string[] choices = { "Conta mensal (ex.: aluguel)", "Assinatura mensal", "Assinatura anual (1 cobrança por ano)",
                 "Plano anual (12 cobranças mensais)", "Compra parcelada", "Conta avulsa" };
             FixedExpenseType original = plan.IsOneTime ? FixedExpenseType.OneTime : plan.IsMonthlyBill ? FixedExpenseType.MonthlyBill :
@@ -470,7 +510,7 @@ namespace SpentZ
             TextBox firstInstallment = new TextBox { Text = plan.FirstInstallment.ToString(), MaxLength = 3,
                 Padding = new Thickness(7) };
             ComboBox category = new ComboBox { ItemsSource = plan.IsIncome ? LedgerEntry.IncomeCategories : store.ExpenseCategories(), SelectedItem = plan.Category };
-            if (!plan.IsIncome) AddField(fields, "Tipo de gasto fixo", kind);
+            if (!plan.IsIncome) AddField(fields, chatSubscription ? "Frequência e tipo de cobrança" : "Tipo de gasto fixo", kind);
             AddField(fields, plan.IsIncome ? "Descrição (ex.: Salário)" : "Descrição", description);
             Label amountLabel = AddField(fields, plan.IsIncome ? "Valor mensal (R$)" : "Valor de cada cobrança (R$)", amount);
             AddField(fields, plan.IsIncome ? "Primeira data prevista (dia/mês/ano)" : "Primeiro vencimento (dia/mês/ano)", due);
@@ -517,6 +557,37 @@ namespace SpentZ
             kind.SelectionChanged += delegate { refreshTerms(); };
             refreshTerms();
             AddField(fields, "Categoria", category);
+            if (chatNote != null) fields.Children.Add(new TextBlock {
+                Text = chatNote, TextWrapping = TextWrapping.Wrap, Foreground = Tone("Muted"), Margin = new Thickness(0, 0, 0, 8)
+            });
+            if (linked != null) fields.Children.Add(new TextBlock {
+                Text = "A primeira cobrança será vinculada à despesa de " + linked.AmountDisplay + " em " + linked.DateDisplay +
+                    ". O valor já registrado no seu saldo será reaproveitado.",
+                TextWrapping = TextWrapping.Wrap, Foreground = Tone("Muted"), Margin = new Thickness(0, 0, 0, 8)
+            });
+            if (chatSubscription)
+            {
+                var preview = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Tone("AccentText"), Margin = new Thickness(0, 0, 0, 8) };
+                fields.Children.Add(preview);
+                Action previewRenewal = delegate
+                {
+                    DateTime start = default(DateTime);
+                    FixedExpenseType choice = (FixedExpenseType)kind.SelectedIndex;
+                    int years;
+                    bool single = choice == FixedExpenseType.AnnualSubscription && int.TryParse(count.Text, out years) && years == 1;
+                    bool recurring = choice == FixedExpenseType.MonthlySubscription || choice == FixedExpenseType.AnnualMonthly ||
+                        choice == FixedExpenseType.AnnualSubscription && !single;
+                    int interval = choice == FixedExpenseType.AnnualSubscription ? 12 : 1;
+                    bool canPreview = recurring && TryEntryDate(due.Text, out start) && start.AddMonths(interval).Year <= 9998;
+                    preview.Visibility = canPreview ? Visibility.Visible : Visibility.Collapsed;
+                    if (canPreview)
+                        preview.Text = "Cobrança seguinte prevista para " + ReportDate(start.AddMonths(interval)) + ".";
+                };
+                due.TextChanged += delegate { previewRenewal(); };
+                kind.SelectionChanged += delegate { previewRenewal(); };
+                count.TextChanged += delegate { previewRenewal(); };
+                previewRenewal();
+            }
             bool hasOpening = openingBalance != null;
             StackPanel paymentFields = new StackPanel();
             ComboBox firstStatus = new ComboBox { ItemsSource = hasOpening ? new[] {
@@ -561,7 +632,7 @@ namespace SpentZ
             Action updatePaymentFields = delegate
             {
                 DateTime first;
-                bool past = adding && TryEntryDate(due.Text, out first) && first <= Today;
+                bool past = adding && linked == null && TryEntryDate(due.Text, out first) && first <= Today;
                 paymentFields.Visibility = past ? Visibility.Visible : Visibility.Collapsed;
                 paymentDateField.Visibility = past && firstStatus.SelectedIndex > 0 ? Visibility.Visible : Visibility.Collapsed;
                 if (past) firstLabel.Content = plan.IsIncome ? "Já recebeu o valor dessa data?" : "Já pagou a cobrança dessa data?";
@@ -585,9 +656,9 @@ namespace SpentZ
             };
             paymentDate.Text = due.Text;
             updatePaymentFields();
-            if (plan.HasPayments || plan.StopBefore.HasValue)
+            if (!canEditDates)
                 fields.Children.Add(new TextBlock {
-                    Text = "Para mudar a data ou o valor daqui em diante, use Alterar próximos vencimentos em Planos ativos.",
+                    Text = "As datas e os valores de pagamentos confirmados podem ser corrigidos em Lançamentos.",
                     TextWrapping = TextWrapping.Wrap, Foreground = Tone("Muted"), Margin = new Thickness(0, 0, 0, 8)
                 });
             TextBlock feedback = new TextBlock { Foreground = Tone("DangerText"), TextWrapping = TextWrapping.Wrap };
@@ -598,6 +669,7 @@ namespace SpentZ
             dialog.Content = new ScrollViewer { Content = fields, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             dialog.Loaded += delegate { description.Focus(); };
             bool confirmedFirst = false;
+            BillPlan savedPlan = null;
             save.Click += delegate
             {
                 string name = description.Text.Trim();
@@ -637,7 +709,7 @@ namespace SpentZ
                     feedback.Text = "As datas deste plano vão além do calendário. Revise a data inicial ou a quantidade.";
                     return;
                 }
-                bool askFirst = adding && date <= Today;
+                bool askFirst = adding && linked == null && date <= Today;
                 if (askFirst && firstStatus.SelectedIndex < 0)
                 {
                     feedback.Text = plan.IsIncome ? "Escolha se você já recebeu o primeiro valor ou se ele está em aberto." :
@@ -671,9 +743,11 @@ namespace SpentZ
                         IsMonthlyBill = !plan.IsIncome && (choice == FixedExpenseType.MonthlyBill || choice == FixedExpenseType.OneTime),
                         CreatedOn = Today
                     };
-                    if (registerFirst) store.SaveNewPlanWithFirstPayment(updated, paidOn, included, match == null ? null : match.Entry);
+                    if (linked != null) store.SaveNewPlanWithFirstPayment(updated, linked.Date, false, linked);
+                    else if (registerFirst) store.SaveNewPlanWithFirstPayment(updated, paidOn, included, match == null ? null : match.Entry);
                     else store.SavePlan(updated);
-                    confirmedFirst = registerFirst;
+                    savedPlan = updated;
+                    confirmedFirst = registerFirst || linked != null;
                     if (currentPage == "Bills" && showIncomePlans && (adding || date != plan.FirstDue))
                     {
                         month = MonthStart(date);
@@ -682,7 +756,8 @@ namespace SpentZ
                     dialog.DialogResult = true;
                 });
             };
-            if (dialog.ShowDialog() == true)
+            bool saved = dialog.ShowDialog() == true;
+            if (saved)
             {
                 ReloadBills();
                 UpdateClosures();
@@ -690,8 +765,9 @@ namespace SpentZ
                 if (confirmedFirst) RefreshChat();
                 if (currentPage == "Chat")
                     AddBubble(AppName, "“" + description.Text.Trim() + "” cadastrado em " +
-                        (plan.IsIncome ? "Ganhos fixos." : "Contas futuras."), false);
+                        (plan.IsIncome ? "Ganhos fixos." : "Contas futuras."), false, plan: chatSubscription ? savedPlan : null);
             }
+            return saved;
         }
     }
 }
